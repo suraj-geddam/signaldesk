@@ -13,10 +13,12 @@ from passlib.context import CryptContext
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import app.config as config_module
 import app.main as main_module
 from app.config import Settings, get_settings
 from app.db import get_connection
 from app.main import app
+from app.middleware import limiter
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -425,6 +427,16 @@ def client(
     monkeypatch: pytest.MonkeyPatch,
     fake_connection: FakeConnection,
 ) -> Generator[TestClient, None, None]:
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
+    )
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("RATE_LIMIT_DEFAULT", "60/minute")
+    monkeypatch.setenv("RATE_LIMIT_LOGIN", "10/minute")
+    monkeypatch.setenv("RATE_LIMIT_AI_REFRESH", "5/minute")
+    config_module.get_settings.cache_clear()
+
     settings = Settings(
         database_url="postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
         jwt_secret="test-secret",
@@ -445,9 +457,11 @@ def client(
 
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_connection] = override_get_connection
+    limiter._storage.reset()
 
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.clear()
+        config_module.get_settings.cache_clear()

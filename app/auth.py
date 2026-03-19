@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.db import DatabaseConnection, get_connection
+from app.middleware import limiter
 from app.queries import get_user_by_id, get_user_by_username
 from app.schemas import LoginRequest, LoginResponse, Role, TokenPayload, UserRow
 
@@ -87,11 +88,14 @@ async def require_admin(user: Annotated[UserRow, Depends(get_current_user)]) -> 
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit(lambda: get_settings().rate_limit_login)
 async def login(
+    request: Request,
     credentials: LoginRequest,
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LoginResponse:
+    del request
     user = await authenticate_user(connection, credentials.username, credentials.password)
     if user is None:
         raise HTTPException(

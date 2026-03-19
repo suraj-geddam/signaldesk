@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.auth import router as auth_router
@@ -15,6 +17,8 @@ from app.insights import router as insights_router
 from app.insights import start_periodic_ai_refresh
 from app.middleware import (
     http_exception_handler,
+    limiter,
+    rate_limit_exception_handler,
     request_id_middleware,
     validation_exception_handler,
 )
@@ -41,9 +45,12 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 app.middleware("http")(request_id_middleware)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(insights_router)

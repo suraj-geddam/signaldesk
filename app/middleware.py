@@ -4,10 +4,45 @@ from uuid import uuid4
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from jose import JWTError, jwt
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 
+from app.config import get_settings
+
 request_id_var: ContextVar[str] = ContextVar("request_id", default="no-request")
+
+
+def _default_rate_limit() -> str:
+    return get_settings().rate_limit_default
+
+
+def _rate_limit_key(request: Request) -> str:
+    authorization = request.headers.get("Authorization")
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        try:
+            payload = jwt.get_unverified_claims(token)
+        except JWTError:
+            pass
+        else:
+            subject = payload.get("sub")
+            if isinstance(subject, str):
+                return f"user:{subject}"
+
+    remote_address = get_remote_address(request)
+    return f"ip:{remote_address}"
+
+
+limiter = Limiter(
+    key_func=_rate_limit_key,
+    default_limits=[_default_rate_limit],
+    headers_enabled=False,
+    storage_uri="memory://",
+)
 
 
 def get_request_id() -> str:
@@ -61,6 +96,24 @@ async def validation_exception_handler(
         content={
             "detail": exc.errors(),
             "status_code": 422,
+            "request_id": get_request_id(),
+        },
+    )
+
+
+def rate_limit_exception_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    del request
+    if not isinstance(exc, RateLimitExceeded):
+        raise TypeError("Rate-limit handler received a non-rate-limit exception.")
+
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": f"Rate limit exceeded: {exc.detail}",
+            "status_code": 429,
             "request_id": get_request_id(),
         },
     )

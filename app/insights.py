@@ -2,7 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -10,6 +10,7 @@ from app import db as db_module
 from app.auth import get_current_user, require_admin
 from app.config import Settings, get_settings
 from app.db import DatabaseConnection, get_connection
+from app.middleware import limiter
 from app.queries import (
     get_feedback_hash_and_count,
     get_latest_summary,
@@ -165,11 +166,14 @@ async def get_insights_endpoint(
     "/feedback/insights/refresh",
     status_code=status.HTTP_202_ACCEPTED,
 )
+@limiter.limit(lambda: get_settings().rate_limit_ai_refresh)
 async def refresh_insights_endpoint(
+    request: Request,
     background_tasks: BackgroundTasks,
     user: Annotated[UserRow, Depends(require_admin)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
+    del request
     del user
     background_tasks.add_task(run_generate_insights, settings)
     return {"message": "Refresh started"}

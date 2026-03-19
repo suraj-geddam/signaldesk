@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+import app.config as config_module
+
 
 def auth_headers(client: TestClient, username: str, password: str) -> dict[str, str]:
     response = client.post(
@@ -71,3 +73,61 @@ def test_forbidden_error_uses_consistent_error_envelope(client: TestClient) -> N
         "request_id": response.headers["x-request-id"],
         "status_code": 403,
     }
+
+
+def test_default_rate_limit_is_enforced(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_DEFAULT", "2/minute")
+    config_module.get_settings.cache_clear()
+
+    first = client.get("/health")
+    second = client.get("/health")
+    third = client.get("/health")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429
+    assert third.json()["status_code"] == 429
+    assert third.json()["request_id"] == third.headers["x-request-id"]
+
+
+def test_login_rate_limit_is_enforced(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_LOGIN", "2/minute")
+    config_module.get_settings.cache_clear()
+
+    first = client.post(
+        "/auth/login",
+        json={"username": "member", "password": "wrong"},
+    )
+    second = client.post(
+        "/auth/login",
+        json={"username": "member", "password": "wrong"},
+    )
+    third = client.post(
+        "/auth/login",
+        json={"username": "member", "password": "wrong"},
+    )
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert third.status_code == 429
+
+
+def test_ai_refresh_rate_limit_is_enforced(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_AI_REFRESH", "1/minute")
+    config_module.get_settings.cache_clear()
+    admin_headers = auth_headers(client, "admin", "admin123")
+
+    first = client.post("/feedback/insights/refresh", headers=admin_headers)
+    second = client.post("/feedback/insights/refresh", headers=admin_headers)
+
+    assert first.status_code == 202
+    assert second.status_code == 429
