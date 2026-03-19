@@ -81,6 +81,37 @@ class FeedbackCreate(BaseModel):
     status: Status = Status.new
 
 
+class FeedbackUpdate(BaseModel):
+    title: str = Field(max_length=200)
+    description: str = Field(min_length=1)
+    source: Source
+    priority: Priority
+    status: Status
+
+
+class FeedbackRow(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    source: Source
+    priority: Priority
+    status: Status
+    created_by: UUID
+    idempotency_key: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+FeedbackResponse = FeedbackRow
+
+
+class FeedbackListResponse(BaseModel):
+    items: list[FeedbackResponse]
+    total: int
+    page: int
+    per_page: int
+
+
 class ErrorResponse(BaseModel):
     detail: str
     status_code: int
