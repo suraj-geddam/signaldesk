@@ -112,6 +112,17 @@ class FeedbackListResponse(BaseModel):
     per_page: int
 
 
+class DailyTrend(BaseModel):
+    date: str
+    count: int
+
+
+class DashboardResponse(BaseModel):
+    status_counts: dict[str, int]
+    priority_counts: dict[str, int]
+    daily_trend: list[DailyTrend]
+
+
 class ErrorResponse(BaseModel):
     detail: str
     status_code: int

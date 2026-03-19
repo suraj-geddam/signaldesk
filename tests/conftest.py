@@ -1,6 +1,6 @@
 import sys
 from collections.abc import AsyncGenerator, Generator, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict, cast
 from uuid import UUID, uuid4
@@ -50,6 +50,7 @@ class FeedbackDict(TypedDict):
 class FakeConnection:
     def __init__(self) -> None:
         created_at = datetime(2026, 3, 19, tzinfo=UTC)
+        self._today = date(2026, 3, 19)
         admin_id = uuid4()
         member_id = uuid4()
         self._clock_tick = 0
@@ -85,6 +86,32 @@ class FakeConnection:
         timestamp = datetime(2026, 3, 19, tzinfo=UTC) + timedelta(minutes=self._clock_tick)
         self._clock_tick += 1
         return timestamp
+
+    def seed_feedback(
+        self,
+        *,
+        title: str,
+        description: str,
+        source: str,
+        priority: str,
+        status: str,
+        created_by: UUID,
+        created_at: datetime,
+    ) -> UUID:
+        feedback_id = uuid4()
+        self.feedback_by_id[feedback_id] = {
+            "id": feedback_id,
+            "title": title,
+            "description": description,
+            "source": source,
+            "priority": priority,
+            "status": status,
+            "created_by": created_by,
+            "idempotency_key": None,
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        return feedback_id
 
     def _sorted_feedback(self) -> list[FeedbackDict]:
         return sorted(
@@ -269,16 +296,58 @@ class FakeConnection:
                 cast(Mapping[str, object], row)
                 for row in self._filtered_feedback(normalized_query, args, include_paging=True)
             ]
+        if normalized_query == "SELECT status, COUNT(*) AS count FROM feedback GROUP BY status":
+            counts = {"new": 0, "in_progress": 0, "done": 0}
+            for row in self.feedback_by_id.values():
+                counts[row["status"]] += 1
+            return [
+                {"status": status, "count": count}
+                for status, count in counts.items()
+                if count > 0
+            ]
+        if normalized_query == "SELECT priority, COUNT(*) AS count FROM feedback GROUP BY priority":
+            counts = {"low": 0, "medium": 0, "high": 0}
+            for row in self.feedback_by_id.values():
+                counts[row["priority"]] += 1
+            return [
+                {"priority": priority, "count": count}
+                for priority, count in counts.items()
+                if count > 0
+            ]
+        if (
+            normalized_query
+            == "SELECT d::date AS date, COALESCE(COUNT(f.id), 0) AS count "
+            "FROM generate_series(CURRENT_DATE - 6, CURRENT_DATE, '1 day') d "
+            "LEFT JOIN feedback f ON f.created_at::date = d::date "
+            "GROUP BY d::date ORDER BY d::date"
+        ):
+            rows: list[Mapping[str, object]] = []
+            for day_offset in range(7):
+                current_day = self._today - timedelta(days=6 - day_offset)
+                count = sum(
+                    1
+                    for row in self.feedback_by_id.values()
+                    if row["created_at"].date() == current_day
+                )
+                rows.append({"date": current_day, "count": count})
+            return rows
         raise AssertionError(f"Unhandled fetch query: {normalized_query}")
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
+def fake_connection() -> FakeConnection:
+    return FakeConnection()
+
+
+@pytest.fixture
+def client(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_connection: FakeConnection,
+) -> Generator[TestClient, None, None]:
     settings = Settings(
         database_url="postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
         jwt_secret="test-secret",
     )
-    fake_connection = FakeConnection()
 
     async def fake_init_pool(settings: Settings) -> None:
         del settings

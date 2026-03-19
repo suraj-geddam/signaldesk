@@ -1,10 +1,13 @@
 from collections.abc import Mapping
+from datetime import date
 from uuid import UUID
 
 from asyncpg import Record
 
 from app.db import DatabaseConnection
 from app.schemas import (
+    DailyTrend,
+    DashboardResponse,
     FeedbackRow,
     Priority,
     SortBy,
@@ -22,6 +25,25 @@ def _record_to_dict(record: Record | Mapping[str, object]) -> dict[str, object]:
 
 def _feedback_from_record(record: Record | Mapping[str, object]) -> FeedbackRow:
     return FeedbackRow.model_validate(_record_to_dict(record))
+
+
+def _count_from_value(value: object) -> int:
+    if not isinstance(value, int):
+        raise RuntimeError("Dashboard query returned a non-integer count value.")
+
+    return value
+
+
+def _trend_from_record(record: Record | Mapping[str, object]) -> DailyTrend:
+    data = _record_to_dict(record)
+    raw_date = data["date"]
+    if not isinstance(raw_date, date):
+        raise RuntimeError("Dashboard trend query returned a non-date value.")
+
+    return DailyTrend(
+        date=raw_date.isoformat(),
+        count=_count_from_value(data["count"]),
+    )
 
 
 async def get_user_by_username(
@@ -250,3 +272,39 @@ async def list_feedback(
     )
 
     return [_feedback_from_record(row) for row in rows], total
+
+
+async def get_dashboard(connection: DatabaseConnection) -> DashboardResponse:
+    status_rows = await connection.fetch(
+        "SELECT status, COUNT(*) AS count FROM feedback GROUP BY status",
+    )
+    priority_rows = await connection.fetch(
+        "SELECT priority, COUNT(*) AS count FROM feedback GROUP BY priority",
+    )
+    trend_rows = await connection.fetch(
+        """
+        SELECT d::date AS date, COALESCE(COUNT(f.id), 0) AS count
+        FROM generate_series(CURRENT_DATE - 6, CURRENT_DATE, '1 day') d
+        LEFT JOIN feedback f ON f.created_at::date = d::date
+        GROUP BY d::date
+        ORDER BY d::date
+        """
+    )
+
+    status_counts = {status.value: 0 for status in Status}
+    for row in status_rows:
+        data = _record_to_dict(row)
+        status_key = str(data["status"])
+        status_counts[status_key] = _count_from_value(data["count"])
+
+    priority_counts = {priority.value: 0 for priority in Priority}
+    for row in priority_rows:
+        data = _record_to_dict(row)
+        priority_key = str(data["priority"])
+        priority_counts[priority_key] = _count_from_value(data["count"])
+
+    return DashboardResponse(
+        status_counts=status_counts,
+        priority_counts=priority_counts,
+        daily_trend=[_trend_from_record(row) for row in trend_rows],
+    )
