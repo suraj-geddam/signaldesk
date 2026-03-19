@@ -6,6 +6,8 @@ Keep changes grouped into small, human-readable commits rather than large batche
 
 Once a baseline has been established, implement additional features on a feature branch instead of continuing directly on the baseline branch.
 
+Do not create merge commits in this repository; keep history linear and use rebase-based workflows.
+
 Use Conventional Commits style for commit messages.
 
 When creating commits from Codex, include the configured Codex co-author attribution or trailer if it is available so the commit history reflects agent authorship.
