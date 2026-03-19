@@ -15,6 +15,7 @@ from app.feedback import router as feedback_router
 from app.health import router as health_router
 from app.insights import router as insights_router
 from app.insights import start_periodic_ai_refresh
+from app.logging import configure_logging
 from app.middleware import (
     http_exception_handler,
     limiter,
@@ -27,6 +28,7 @@ from app.middleware import (
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
+    configure_logging(settings.log_level)
     await init_pool(settings)
     periodic_task: Task[None] | None = start_periodic_ai_refresh(settings)
 

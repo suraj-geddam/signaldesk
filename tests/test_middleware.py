@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 import app.config as config_module
@@ -131,3 +133,53 @@ def test_ai_refresh_rate_limit_is_enforced(
 
     assert first.status_code == 202
     assert second.status_code == 429
+
+
+def test_request_logs_include_request_metadata(
+    client: TestClient,
+    caplog,
+) -> None:
+    caplog.set_level("INFO", logger="signaldesk.http")
+    caplog.clear()
+
+    response = client.get(
+        "/health",
+        headers={"X-Request-ID": "req-log-success"},
+    )
+
+    assert response.status_code == 200
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "signaldesk.http"
+    ]
+    assert [event["event"] for event in events] == ["request_started", "request_finished"]
+    assert events[0]["request_id"] == "req-log-success"
+    assert events[0]["method"] == "GET"
+    assert events[0]["path"] == "/health"
+    assert events[1]["request_id"] == "req-log-success"
+    assert events[1]["status_code"] == 200
+    assert events[1]["duration_ms"] >= 0
+
+
+def test_request_logs_include_error_status(
+    client: TestClient,
+    caplog,
+) -> None:
+    caplog.set_level("INFO", logger="signaldesk.http")
+    caplog.clear()
+
+    response = client.post(
+        "/feedback/insights/refresh",
+        headers=auth_headers(client, "member", "member123") | {"X-Request-ID": "req-log-error"},
+    )
+
+    assert response.status_code == 403
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "signaldesk.http"
+    ]
+    assert events[-1]["event"] == "request_finished"
+    assert events[-1]["request_id"] == "req-log-error"
+    assert events[-1]["status_code"] == 403

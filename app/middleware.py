@@ -1,6 +1,8 @@
 from contextvars import ContextVar
+from time import perf_counter
 from uuid import uuid4
 
+import structlog
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -12,8 +14,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app.config import get_settings
+from app.logging import get_logger
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="no-request")
+logger = get_logger("signaldesk.http")
 
 
 def _default_rate_limit() -> str:
@@ -55,12 +59,30 @@ async def request_id_middleware(
 ) -> Response:
     incoming_request_id = request.headers.get("X-Request-ID")
     request_id = incoming_request_id or str(uuid4())
+    start = perf_counter()
     token = request_id_var.set(request_id)
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    logger.info(
+        "request_started",
+        method=request.method,
+        path=request.url.path,
+    )
     try:
         response = await call_next(request)
     finally:
+        structlog.contextvars.clear_contextvars()
         request_id_var.reset(token)
 
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    logger.info(
+        "request_finished",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=round((perf_counter() - start) * 1000, 3),
+    )
+    structlog.contextvars.clear_contextvars()
     response.headers["X-Request-ID"] = request_id
     return response
 
