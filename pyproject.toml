@@ -1,0 +1,46 @@
+[project]
+name = "signaldesk"
+version = "0.1.0"
+description = "Internal tool for tracking and prioritizing customer feedback."
+requires-python = ">=3.12"
+dependencies = [
+  "asyncpg>=0.30.0,<1.0.0",
+  "fastapi>=0.118.0,<1.0.0",
+  "openai>=1.109.0,<2.0.0",
+  "passlib[bcrypt]>=1.7.4,<2.0.0",
+  "pydantic-settings>=2.11.0,<3.0.0",
+  "python-jose[cryptography]>=3.5.0,<4.0.0",
+  "slowapi>=0.1.9,<1.0.0",
+  "structlog>=25.4.0,<26.0.0",
+  "uvicorn[standard]>=0.37.0,<1.0.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.1,<1.0.0",
+  "pyright>=1.1.405,<2.0.0",
+  "pytest>=8.4.2,<9.0.0",
+  "ruff>=0.13.1,<1.0.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["app", "tests"]
+pythonVersion = "3.12"
+reportMissingTypeStubs = false
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.uv]
+package = false

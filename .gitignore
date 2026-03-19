@@ -1,2 +1,8 @@
+.env
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.pyc
 internal-docs/
 CLAUDE.md
