@@ -1,14 +1,17 @@
 from collections.abc import Mapping
 from datetime import date
+from json import dumps
 from uuid import UUID
 
 from asyncpg import Record
 
 from app.db import DatabaseConnection
 from app.schemas import (
+    AiSummaryRow,
     DailyTrend,
     DashboardResponse,
     FeedbackRow,
+    Insight,
     Priority,
     SortBy,
     SortOrder,
@@ -44,6 +47,10 @@ def _trend_from_record(record: Record | Mapping[str, object]) -> DailyTrend:
         date=raw_date.isoformat(),
         count=_count_from_value(data["count"]),
     )
+
+
+def _ai_summary_from_record(record: Record | Mapping[str, object]) -> AiSummaryRow:
+    return AiSummaryRow.model_validate(_record_to_dict(record))
 
 
 async def get_user_by_username(
@@ -308,3 +315,72 @@ async def get_dashboard(connection: DatabaseConnection) -> DashboardResponse:
         priority_counts=priority_counts,
         daily_trend=[_trend_from_record(row) for row in trend_rows],
     )
+
+
+async def get_latest_summary(connection: DatabaseConnection) -> AiSummaryRow | None:
+    row = await connection.fetchrow(
+        "SELECT * FROM ai_summaries ORDER BY generated_at DESC LIMIT 1",
+    )
+    if row is None:
+        return None
+
+    return _ai_summary_from_record(row)
+
+
+async def get_feedback_hash_and_count(connection: DatabaseConnection) -> tuple[str, int]:
+    row = await connection.fetchrow(
+        """
+        SELECT COALESCE(
+                   md5(string_agg(id::text || updated_at::text, ',' ORDER BY id)),
+                   md5('')
+               ) AS hash,
+               COUNT(*) AS count
+        FROM feedback
+        """
+    )
+    if row is None:
+        raise RuntimeError("Feedback hash query returned no row.")
+
+    data = _record_to_dict(row)
+    feedback_hash = data["hash"]
+    feedback_count = data["count"]
+    if not isinstance(feedback_hash, str):
+        raise RuntimeError("Feedback hash query returned a non-string hash.")
+
+    return feedback_hash, _count_from_value(feedback_count)
+
+
+async def list_feedback_for_insights(
+    connection: DatabaseConnection,
+    limit: int,
+) -> list[FeedbackRow]:
+    rows = await connection.fetch(
+        "SELECT * FROM feedback ORDER BY created_at DESC LIMIT $1",
+        limit,
+    )
+    return [_feedback_from_record(row) for row in rows]
+
+
+async def insert_ai_summary(
+    connection: DatabaseConnection,
+    *,
+    insights: list[Insight],
+    feedback_hash: str,
+    feedback_count: int,
+    model_used: str,
+) -> AiSummaryRow:
+    row = await connection.fetchrow(
+        """
+        INSERT INTO ai_summaries (insights, feedback_hash, feedback_count, model_used)
+        VALUES ($1::jsonb, $2, $3, $4)
+        RETURNING *
+        """,
+        dumps([insight.model_dump() for insight in insights]),
+        feedback_hash,
+        feedback_count,
+        model_used,
+    )
+    if row is None:
+        raise RuntimeError("AI summary insert unexpectedly returned no row.")
+
+    return _ai_summary_from_record(row)

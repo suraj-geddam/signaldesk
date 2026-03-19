@@ -1,6 +1,8 @@
 import sys
 from collections.abc import AsyncGenerator, Generator, Mapping
 from datetime import UTC, date, datetime, timedelta
+from hashlib import md5
+from json import loads
 from pathlib import Path
 from typing import TypedDict, cast
 from uuid import UUID, uuid4
@@ -47,6 +49,15 @@ class FeedbackDict(TypedDict):
     updated_at: datetime
 
 
+class AiSummaryDict(TypedDict):
+    id: UUID
+    insights: list[dict[str, object]]
+    feedback_hash: str
+    feedback_count: int
+    model_used: str
+    generated_at: datetime
+
+
 class FakeConnection:
     def __init__(self) -> None:
         created_at = datetime(2026, 3, 19, tzinfo=UTC)
@@ -81,6 +92,7 @@ class FakeConnection:
         }
         self.feedback_by_id: dict[UUID, FeedbackDict] = {}
         self.feedback_by_idempotency_key: dict[str, UUID] = {}
+        self.ai_summaries: list[AiSummaryDict] = []
 
     def _next_timestamp(self) -> datetime:
         timestamp = datetime(2026, 3, 19, tzinfo=UTC) + timedelta(minutes=self._clock_tick)
@@ -112,6 +124,36 @@ class FakeConnection:
             "updated_at": created_at,
         }
         return feedback_id
+
+    def compute_feedback_hash(self) -> str:
+        payload = ",".join(
+            f"{row['id']}{row['updated_at'].isoformat()}"
+            for row in sorted(self.feedback_by_id.values(), key=lambda row: row["id"])
+        )
+        return md5(payload.encode("utf-8")).hexdigest()
+
+    def seed_ai_summary(
+        self,
+        *,
+        insights: list[dict[str, object]],
+        feedback_hash: str,
+        feedback_count: int,
+        model_used: str,
+        generated_at: datetime,
+    ) -> UUID:
+        summary_id = uuid4()
+        self.ai_summaries.append(
+            {
+                "id": summary_id,
+                "insights": insights,
+                "feedback_hash": feedback_hash,
+                "feedback_count": feedback_count,
+                "model_used": model_used,
+                "generated_at": generated_at,
+            }
+        )
+        self.ai_summaries.sort(key=lambda row: row["generated_at"], reverse=True)
+        return summary_id
 
     def _sorted_feedback(self) -> list[FeedbackDict]:
         return sorted(
@@ -247,6 +289,18 @@ class FakeConnection:
                 if existing_row is not None:
                     return existing_row
             return None
+        if normalized_query == "SELECT * FROM ai_summaries ORDER BY generated_at DESC LIMIT 1":
+            if not self.ai_summaries:
+                return None
+            return self.ai_summaries[0]
+        if (
+            "md5(string_agg(id::text || updated_at::text, ',' ORDER BY id))" in normalized_query
+            and "COUNT(*) AS count FROM feedback" in normalized_query
+        ):
+            return {
+                "hash": self.compute_feedback_hash(),
+                "count": len(self.feedback_by_id),
+            }
         if (
             normalized_query.startswith("UPDATE feedback SET")
             and "created_by = $7" in normalized_query
@@ -287,10 +341,37 @@ class FakeConnection:
                 updated_at=self._next_timestamp(),
             )
             return row
+        if normalized_query.startswith("INSERT INTO ai_summaries"):
+            insights, feedback_hash, feedback_count, model_used = args
+            if not isinstance(feedback_count, int):
+                raise AssertionError("feedback_count must be an int")
+            if not isinstance(insights, str):
+                raise AssertionError("insights payload must be serialized JSON")
+
+            generated_at = self._next_timestamp()
+            summary: AiSummaryDict = {
+                "id": uuid4(),
+                "insights": cast(list[dict[str, object]], loads(insights)),
+                "feedback_hash": str(feedback_hash),
+                "feedback_count": feedback_count,
+                "model_used": str(model_used),
+                "generated_at": generated_at,
+            }
+            self.ai_summaries.append(summary)
+            self.ai_summaries.sort(key=lambda row: row["generated_at"], reverse=True)
+            return summary
         return None
 
     async def fetch(self, query: str, *args: object) -> list[Mapping[str, object]]:
         normalized_query = " ".join(query.split())
+        if normalized_query == "SELECT * FROM feedback ORDER BY created_at DESC LIMIT $1":
+            limit_arg = args[0]
+            if not isinstance(limit_arg, int):
+                raise AssertionError("Insights limit must be an int")
+            return [
+                cast(Mapping[str, object], row)
+                for row in self._sorted_feedback()[:limit_arg]
+            ]
         if normalized_query.startswith("SELECT * FROM feedback"):
             return [
                 cast(Mapping[str, object], row)

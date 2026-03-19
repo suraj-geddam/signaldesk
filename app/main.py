@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+from asyncio import CancelledError, Task
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
@@ -8,16 +9,23 @@ from app.dashboard import router as dashboard_router
 from app.db import close_pool, init_pool
 from app.feedback import router as feedback_router
 from app.health import router as health_router
+from app.insights import router as insights_router
+from app.insights import start_periodic_ai_refresh
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
     await init_pool(settings)
+    periodic_task: Task[None] | None = start_periodic_ai_refresh(settings)
 
     try:
         yield
     finally:
+        if periodic_task is not None:
+            periodic_task.cancel()
+            with suppress(CancelledError):
+                await periodic_task
         await close_pool()
 
 
@@ -28,5 +36,6 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(insights_router)
 app.include_router(feedback_router)
 app.include_router(health_router)

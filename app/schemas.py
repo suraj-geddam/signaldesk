@@ -123,6 +123,30 @@ class DashboardResponse(BaseModel):
     daily_trend: list[DailyTrend]
 
 
+class Insight(BaseModel):
+    theme: str
+    confidence: float
+    justification: str
+
+
+class AiSummaryRow(BaseModel):
+    id: UUID
+    insights: list[Insight]
+    feedback_hash: str
+    feedback_count: int
+    model_used: str
+    generated_at: datetime
+
+
+class InsightsResponse(BaseModel):
+    insights: list[Insight]
+    feedback_count: int | None = None
+    model_used: str | None = None
+    generated_at: datetime | None = None
+    stale: bool
+    message: str | None = None
+
+
 class ErrorResponse(BaseModel):
     detail: str
     status_code: int
