@@ -12,6 +12,8 @@ While this is still a one-person project, do not require pull requests for every
 
 When a feature branch is complete, first verify it works locally with appropriate checks (CI-equivalent tests and lightweight endpoint/manual checks such as `curl` where relevant), then rebase it onto `main` and merge it back to `main` without a merge commit.
 
+After a feature branch has been merged into `main` and pushed, delete the merged feature branch locally and on the remote unless there is a specific reason to keep it.
+
 Use Conventional Commits style for commit messages.
 
 When creating commits from Codex, include the configured Codex co-author attribution or trailer if it is available so the commit history reflects agent authorship.
