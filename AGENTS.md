@@ -17,3 +17,5 @@ Use Conventional Commits style for commit messages.
 When creating commits from Codex, include the configured Codex co-author attribution or trailer if it is available so the commit history reflects agent authorship.
 
 Follow TDD by default: write or adjust a failing test first, make it pass with the smallest viable change, then refactor if needed.
+
+After a frontend exists, use the `agent-browser` command with the `agent-browser` and `dogfood` skills to verify end-to-end behavior before considering frontend features complete.
