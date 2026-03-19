@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 
 import app.insights as insights_module
 from app.config import Settings
-from tests.conftest import FakeConnection
+
+from .conftest import FakeConnection
 
 
 class FakeParsedMessage:

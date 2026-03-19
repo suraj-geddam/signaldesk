@@ -1,17 +1,13 @@
-import sys
 from collections.abc import AsyncGenerator, Generator, Mapping
 from datetime import UTC, date, datetime, timedelta
 from hashlib import md5
 from json import loads
-from pathlib import Path
 from typing import TypedDict, cast
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from passlib.context import CryptContext
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.config as config_module
 import app.main as main_module

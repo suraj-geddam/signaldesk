@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import FakeConnection
+from .conftest import FakeConnection
 
 
 def auth_headers(client: TestClient, username: str, password: str) -> dict[str, str]:
