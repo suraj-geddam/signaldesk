@@ -297,6 +297,17 @@ def reset_test_database(
     config_module.get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def seeded_test_users(
+    reset_test_database: None,
+    database_url: str,
+) -> None:
+    del reset_test_database
+    import app.seed as seed_module
+
+    seed_module.seed_default_test_users(database_url)
+
+
 @pytest.fixture
 def settings(database_url: str) -> Settings:
     return Settings(

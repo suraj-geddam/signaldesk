@@ -31,16 +31,18 @@ def test_database_bootstrap_is_idempotent(database_url: str) -> None:
         finally:
             await connection.close()
 
-        assert user_count == 2
+        assert user_count == 0
         assert trigger_count == 1
 
     run_async(_exercise())
 
 
-def test_app_startup_bootstraps_an_empty_database(
+def test_app_startup_bootstraps_schema_but_requires_explicit_seeding(
     monkeypatch: pytest.MonkeyPatch,
     database_url: str,
 ) -> None:
+    import app.seed as seed_module
+
     clear_database_schema(database_url)
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("JWT_SECRET", "test-secret")
@@ -57,6 +59,14 @@ def test_app_startup_bootstraps_an_empty_database(
                 "/auth/login",
                 json={"username": "member", "password": "member123"},
             )
-            assert login_response.status_code == 200
+            assert login_response.status_code == 401
+
+            seed_module.seed_default_test_users(database_url)
+
+            seeded_login_response = client.post(
+                "/auth/login",
+                json={"username": "member", "password": "member123"},
+            )
+            assert seeded_login_response.status_code == 200
     finally:
         config_module.get_settings.cache_clear()

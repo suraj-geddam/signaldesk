@@ -51,8 +51,3 @@ CREATE TABLE IF NOT EXISTS ai_summaries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_summaries_generated_at ON ai_summaries (generated_at DESC);
-
-INSERT INTO users (username, password_hash, role) VALUES
-    ('admin', crypt('admin123', gen_salt('bf', 12)), 'admin'),
-    ('member', crypt('member123', gen_salt('bf', 12)), 'member')
-ON CONFLICT (username) DO NOTHING;
