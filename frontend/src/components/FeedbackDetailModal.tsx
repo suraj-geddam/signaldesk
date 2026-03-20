@@ -111,14 +111,9 @@ export function FeedbackDetailModal({
 
   if (!feedback) return null;
 
-  const viewFooter = (
-    <>
-      <Button variant="secondary" onClick={handleClose}>
-        Close
-      </Button>
-      {canEdit && <Button onClick={enterEdit}>Edit</Button>}
-    </>
-  );
+  const viewFooter = canEdit ? (
+    <Button onClick={enterEdit}>Edit</Button>
+  ) : null;
 
   const editFooter = (
     <>
@@ -143,12 +138,21 @@ export function FeedbackDetailModal({
     >
       {mode === "view" ? (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge type="status" value={feedback.status} />
-            <Badge type="priority" value={feedback.priority} />
-            <span className="text-xs text-stone-500 capitalize">
-              {feedback.source}
-            </span>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-stone-500">Status</span>
+              <Badge type="status" value={feedback.status} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-stone-500">Priority</span>
+              <Badge type="priority" value={feedback.priority} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-stone-500">Source</span>
+              <span className="text-xs text-stone-600 capitalize">
+                {feedback.source}
+              </span>
+            </div>
           </div>
           <p className="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed">
             {feedback.description}

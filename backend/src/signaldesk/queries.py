@@ -224,9 +224,9 @@ async def delete_feedback(
 async def list_feedback(
     connection: DatabaseConnection,
     *,
-    status: Status | None = None,
-    priority: Priority | None = None,
-    source: Source | None = None,
+    statuses: list[Status] | None = None,
+    priorities: list[Priority] | None = None,
+    sources: list[Source] | None = None,
     search: str | None = None,
     sort_by: SortBy = SortBy.created_at,
     sort_order: SortOrder = SortOrder.desc,
@@ -237,18 +237,21 @@ async def list_feedback(
     params: list[object] = []
     idx = 1
 
-    if status is not None:
-        conditions.append(f"status = ${idx}")
-        params.append(status)
-        idx += 1
-    if priority is not None:
-        conditions.append(f"priority = ${idx}")
-        params.append(priority)
-        idx += 1
-    if source is not None:
-        conditions.append(f"source = ${idx}")
-        params.append(source)
-        idx += 1
+    if statuses:
+        placeholders = ", ".join(f"${idx + i}" for i in range(len(statuses)))
+        conditions.append(f"status IN ({placeholders})")
+        params.extend(statuses)
+        idx += len(statuses)
+    if priorities:
+        placeholders = ", ".join(f"${idx + i}" for i in range(len(priorities)))
+        conditions.append(f"priority IN ({placeholders})")
+        params.extend(priorities)
+        idx += len(priorities)
+    if sources:
+        placeholders = ", ".join(f"${idx + i}" for i in range(len(sources)))
+        conditions.append(f"source IN ({placeholders})")
+        params.extend(sources)
+        idx += len(sources)
     if search:
         conditions.append(f"(title || ' ' || description) ILIKE ${idx}")
         params.append(f"%{search}%")

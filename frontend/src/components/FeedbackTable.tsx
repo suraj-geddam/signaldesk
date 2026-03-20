@@ -47,7 +47,7 @@ function ActionsMenu({
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-36 bg-white rounded-lg shadow-lg border border-stone-200 py-1 z-20">
+        <div className="absolute right-0 bottom-full mb-1 w-36 bg-white rounded-lg shadow-lg border border-stone-200 py-1 z-20">
           <button
             onClick={(e) => {
               e.stopPropagation();

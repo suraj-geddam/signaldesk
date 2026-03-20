@@ -1,25 +1,23 @@
 import { useSearchParams } from "react-router";
 import { useDebounce } from "../hooks/useDebounce";
 import { Input } from "./ui/Input";
+import { MultiSelect } from "./ui/MultiSelect";
 import { Select } from "./ui/Select";
 import { useEffect, useState } from "react";
 
 const statusOptions = [
-  { value: "", label: "All statuses" },
   { value: "new", label: "New" },
   { value: "in_progress", label: "In Progress" },
   { value: "done", label: "Done" },
 ];
 
 const priorityOptions = [
-  { value: "", label: "All priorities" },
   { value: "high", label: "High" },
   { value: "medium", label: "Medium" },
   { value: "low", label: "Low" },
 ];
 
 const sourceOptions = [
-  { value: "", label: "All sources" },
   { value: "email", label: "Email" },
   { value: "call", label: "Call" },
   { value: "slack", label: "Slack" },
@@ -30,9 +28,13 @@ const sourceOptions = [
 const sortOptions = [
   { value: "created_at:desc", label: "Newest first" },
   { value: "created_at:asc", label: "Oldest first" },
-  { value: "priority:desc", label: "Highest priority" },
-  { value: "priority:asc", label: "Lowest priority" },
+  { value: "priority:asc", label: "Highest priority" },
+  { value: "priority:desc", label: "Lowest priority" },
 ];
+
+function parseMulti(param: string | null): string[] {
+  return param ? param.split(",") : [];
+}
 
 export function FeedbackFilterBar() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,6 +72,19 @@ export function FeedbackFilterBar() {
     });
   }
 
+  function setMultiParam(key: string, values: string[]) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (values.length > 0) {
+        next.set(key, values.join(","));
+      } else {
+        next.delete(key);
+      }
+      next.set("page", "1");
+      return next;
+    });
+  }
+
   const hasFilters =
     searchParams.get("status") ||
     searchParams.get("priority") ||
@@ -86,49 +101,56 @@ export function FeedbackFilterBar() {
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-2.5">
-      <div className="flex-1 min-w-[200px]">
-        <Input
-          placeholder="Search feedback..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          aria-label="Search feedback"
+    <>
+      <div className="flex flex-wrap items-end gap-2.5">
+        <div className="flex-1 min-w-[200px]">
+          <Input
+            placeholder="Search feedback..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            aria-label="Search feedback"
+          />
+        </div>
+        <MultiSelect
+          options={statusOptions}
+          value={parseMulti(searchParams.get("status"))}
+          onChange={(vals) => setMultiParam("status", vals)}
+          placeholder="All statuses"
+          aria-label="Filter by status"
+        />
+        <MultiSelect
+          options={priorityOptions}
+          value={parseMulti(searchParams.get("priority"))}
+          onChange={(vals) => setMultiParam("priority", vals)}
+          placeholder="All priorities"
+          aria-label="Filter by priority"
+        />
+        <MultiSelect
+          options={sourceOptions}
+          value={parseMulti(searchParams.get("source"))}
+          onChange={(vals) => setMultiParam("source", vals)}
+          placeholder="All sources"
+          aria-label="Filter by source"
+        />
+        <Select
+          options={sortOptions}
+          value={
+            searchParams.get("sort") || "created_at:desc"
+          }
+          onChange={(e) => setParam("sort", e.target.value)}
+          aria-label="Sort order"
         />
       </div>
-      <Select
-        options={statusOptions}
-        value={searchParams.get("status") || ""}
-        onChange={(e) => setParam("status", e.target.value)}
-        aria-label="Filter by status"
-      />
-      <Select
-        options={priorityOptions}
-        value={searchParams.get("priority") || ""}
-        onChange={(e) => setParam("priority", e.target.value)}
-        aria-label="Filter by priority"
-      />
-      <Select
-        options={sourceOptions}
-        value={searchParams.get("source") || ""}
-        onChange={(e) => setParam("source", e.target.value)}
-        aria-label="Filter by source"
-      />
-      <Select
-        options={sortOptions}
-        value={
-          searchParams.get("sort") || "created_at:desc"
-        }
-        onChange={(e) => setParam("sort", e.target.value)}
-        aria-label="Sort order"
-      />
       {hasFilters && (
-        <button
-          onClick={clearFilters}
-          className="text-sm text-signal-600 hover:text-signal-800 transition-colors whitespace-nowrap pb-2 cursor-pointer"
-        >
-          Clear filters
-        </button>
+        <div className="mt-1.5">
+          <button
+            onClick={clearFilters}
+            className="text-xs text-signal-600 hover:text-signal-800 transition-colors cursor-pointer"
+          >
+            Clear filters
+          </button>
+        </div>
       )}
-    </div>
+    </>
   );
 }

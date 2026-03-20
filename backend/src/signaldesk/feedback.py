@@ -58,18 +58,22 @@ async def list_feedback_endpoint(
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
-    status_filter: Annotated[Status | None, Query(alias="status")] = None,
-    priority: Priority | None = None,
-    source: Source | None = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    priority: str | None = None,
+    source: str | None = None,
     search: str | None = None,
     sort_by: SortBy = SortBy.created_at,
     sort_order: SortOrder = SortOrder.desc,
 ) -> FeedbackListResponse:
+    statuses = [Status(s) for s in status_filter.split(",") if s] if status_filter else None
+    priorities = [Priority(p) for p in priority.split(",") if p] if priority else None
+    sources = [Source(s) for s in source.split(",") if s] if source else None
+
     items, total = await list_feedback(
         connection,
-        status=status_filter,
-        priority=priority,
-        source=source,
+        statuses=statuses,
+        priorities=priorities,
+        sources=sources,
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,

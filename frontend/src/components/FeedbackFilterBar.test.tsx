@@ -64,25 +64,30 @@ describe("FeedbackFilterBar", () => {
     expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
   });
 
-  it("changes status filter via select", async () => {
+  it("opens multiselect dropdown on click and toggles option", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderFilterBar();
 
-    const statusSelect = screen.getByLabelText(
-      "Filter by status",
-    ) as HTMLSelectElement;
-    await user.selectOptions(statusSelect, "new");
-    expect(statusSelect.value).toBe("new");
+    const statusButton = screen.getByLabelText("Filter by status");
+    await user.click(statusButton);
+
+    const newCheckbox = screen.getByLabelText("New");
+    expect(newCheckbox).toBeInTheDocument();
+
+    await user.click(newCheckbox);
+    expect(screen.getByText("Clear filters")).toBeInTheDocument();
   });
 
-  it("changes priority filter via select", async () => {
+  it("supports selecting multiple priority values", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderFilterBar();
 
-    const prioritySelect = screen.getByLabelText(
-      "Filter by priority",
-    ) as HTMLSelectElement;
-    await user.selectOptions(prioritySelect, "high");
-    expect(prioritySelect.value).toBe("high");
+    const priorityButton = screen.getByLabelText("Filter by priority");
+    await user.click(priorityButton);
+
+    await user.click(screen.getByLabelText("High"));
+    await user.click(screen.getByLabelText("Medium"));
+
+    expect(priorityButton).toHaveTextContent("High, Medium");
   });
 });
