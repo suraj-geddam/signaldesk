@@ -20,6 +20,6 @@ When creating commits from Codex, include the configured Codex co-author attribu
 
 Follow TDD by default: write or adjust a failing test first, make it pass with the smallest viable change, then refactor if needed.
 
-After a frontend exists, use the `agent-browser` command with the `agent-browser` and `dogfood` skills to verify end-to-end behavior before considering frontend features complete.
+For any change that affects frontend behavior or is visible from the frontend, use the `agent-browser` command with the `agent-browser` and `dogfood` skills to verify end-to-end behavior before considering the change "done".
 
 If implementation intentionally deviates from the LLD, record the deviation and the reason in `internal-docs/implementation-progress.md`.
