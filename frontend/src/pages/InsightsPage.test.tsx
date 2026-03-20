@@ -60,7 +60,9 @@ function renderInsights(user: User, fetchResponse: InsightsResponse) {
   vi.stubGlobal("fetch", fetchMock);
 
   const noop = () => {};
-  render(
+  return {
+    fetchMock,
+    ...render(
     <AuthContext.Provider
       value={{
         token: "test-token",
@@ -75,9 +77,8 @@ function renderInsights(user: User, fetchResponse: InsightsResponse) {
         <InsightsPage />
       </MemoryRouter>
     </AuthContext.Provider>,
-  );
-
-  return fetchMock;
+    ),
+  };
 }
 
 describe("InsightsPage", () => {
@@ -136,7 +137,7 @@ describe("InsightsPage", () => {
     const toast = await import("react-hot-toast");
     const toastSuccess = vi.mocked(toast.default.success);
 
-    const fetchMock = renderInsights(adminUser, mockInsights);
+    const { fetchMock } = renderInsights(adminUser, mockInsights);
 
     const refreshBtn = await screen.findByRole("button", {
       name: /refresh insights/i,
@@ -160,5 +161,22 @@ describe("InsightsPage", () => {
     await waitFor(() => {
       expect(toastSuccess).toHaveBeenCalled();
     });
+  });
+
+  it("cleans up polling on unmount", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+    const { fetchMock, unmount } = renderInsights(adminUser, mockInsights);
+
+    const refreshBtn = await screen.findByRole("button", {
+      name: /refresh insights/i,
+    });
+    await user.click(refreshBtn);
+
+    unmount();
+    vi.advanceTimersByTime(3500);
+
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

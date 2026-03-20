@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { refreshInsights } from "../api";
 import { useAuth } from "../hooks/useAuth";
@@ -39,6 +39,8 @@ export function InsightsPage() {
     }
     setRefreshing(false);
   }, []);
+
+  useEffect(() => stopPolling, [stopPolling]);
 
   async function handleRefresh() {
     if (!token) return;
