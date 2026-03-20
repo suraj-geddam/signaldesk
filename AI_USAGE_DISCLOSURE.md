@@ -1,27 +1,27 @@
 # AI Usage Disclosure
 
-AI tools were used during planning, implementation, review, and documentation. All code and configuration changes were manually inspected, tested, and in several cases corrected or rewritten before merge.
+AI tools were used during planning, implementation, review, and documentation.
 
 ## Tools Used
 
 - Claude on the web
 - Codex / GPT-5.4 high
+- Claude Code / Claude Opus 4.6 high
 
-## Where AI Was Used
+## Workflow Steps
 
-### Claude
-
-- early planning and design discussion
-- frontend-oriented implementation and design work
-- review feedback and concern-spotting on completed slices
-
-### Codex
-
-- backend implementation and refactors
-- tests, CI, Docker, and Railway deployment setup
-- auth, feedback, dashboard, insights, middleware, packaging, and repo layout work
-- debugging and follow-up fixes during deployment
-- final project documentation
+- Initial high level design (Claude on the web)
+- Low level design for the backend (Claude on the web)
+- CI & DB setup (Codex)
+- Backend implementation (Codex)
+- Low level design for the frontend (against stable backend) (Claude on the web)
+- Frontend implementation (Claude Code)
+- Review the repo parallely (Claude on the web)
+- Non-frontend review fixes (Codex)
+- Frontend fixes (Claude Code)
+- Backend refactor (Codex)
+- Deployment (assisted by Codex)
+- Final documentation (assisted by Codex)
 
 ## Modified Or Corrected After AI Output
 
@@ -44,7 +44,3 @@ AI tools were used during planning, implementation, review, and documentation. A
 - frontend Vitest suite
 - Playwright happy-path e2e against the Docker Compose stack
 - manual verification against the Railway deployment
-
-## Human Responsibility
-
-The final merged code, deployment setup, and documentation were accepted only after manual review and validation. AI accelerated the work, but did not replace engineering judgment, testing, or debugging.
