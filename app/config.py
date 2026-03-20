@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     rate_limit_login: str = "10/minute"
     rate_limit_ai_refresh: str = "5/minute"
 
+    cors_origins: str = "http://localhost:5173"
+
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(
