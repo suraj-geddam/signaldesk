@@ -3,14 +3,14 @@
   "build": {
     "builder": "DOCKERFILE",
     "watchPatterns": [
-      "src/**",
-      "Caddyfile",
-      "Dockerfile",
-      "index.html",
-      "package-lock.json",
-      "package.json",
-      "railway.json",
-      "vite.config.ts"
+      "/frontend/src/**",
+      "/frontend/Caddyfile",
+      "/frontend/Dockerfile",
+      "/frontend/index.html",
+      "/frontend/package-lock.json",
+      "/frontend/package.json",
+      "/frontend/railway.json",
+      "/frontend/vite.config.ts"
     ]
   },
   "deploy": {
