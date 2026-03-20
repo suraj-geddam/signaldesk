@@ -1,8 +1,8 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from fastapi.testclient import TestClient
 
-from .conftest import FakeConnection
+from .conftest import DatabaseHelper
 
 
 def auth_headers(client: TestClient, username: str, password: str) -> dict[str, str]:
@@ -16,11 +16,12 @@ def auth_headers(client: TestClient, username: str, password: str) -> dict[str, 
 
 def test_dashboard_returns_grouped_counts(
     client: TestClient,
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
 ) -> None:
-    member_id = fake_connection.users_by_username["member"]["id"]
-    base_date = datetime(2026, 3, 19, tzinfo=UTC)
-    fake_connection.seed_feedback(
+    member_id = db.user_id("member")
+    today = db.current_date()
+    base_date = datetime.combine(today, time(12, 0), tzinfo=UTC)
+    db.seed_feedback(
         title="New high priority",
         description="Fresh issue.",
         source="email",
@@ -29,7 +30,7 @@ def test_dashboard_returns_grouped_counts(
         created_by=member_id,
         created_at=base_date,
     )
-    fake_connection.seed_feedback(
+    db.seed_feedback(
         title="Work in progress",
         description="Being handled.",
         source="chat",
@@ -38,7 +39,7 @@ def test_dashboard_returns_grouped_counts(
         created_by=member_id,
         created_at=base_date - timedelta(days=1),
     )
-    fake_connection.seed_feedback(
+    db.seed_feedback(
         title="Closed item",
         description="Already done.",
         source="call",
@@ -68,11 +69,12 @@ def test_dashboard_returns_grouped_counts(
 
 def test_dashboard_zero_fills_last_seven_days(
     client: TestClient,
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
 ) -> None:
-    member_id = fake_connection.users_by_username["member"]["id"]
-    today = datetime(2026, 3, 19, tzinfo=UTC)
-    fake_connection.seed_feedback(
+    member_id = db.user_id("member")
+    current_day = db.current_date()
+    today = datetime.combine(current_day, time(12, 0), tzinfo=UTC)
+    db.seed_feedback(
         title="Today item",
         description="Current day feedback.",
         source="slack",
@@ -81,7 +83,7 @@ def test_dashboard_zero_fills_last_seven_days(
         created_by=member_id,
         created_at=today,
     )
-    fake_connection.seed_feedback(
+    db.seed_feedback(
         title="Earlier item",
         description="Older feedback still in window.",
         source="email",
@@ -90,7 +92,7 @@ def test_dashboard_zero_fills_last_seven_days(
         created_by=member_id,
         created_at=today - timedelta(days=3),
     )
-    fake_connection.seed_feedback(
+    db.seed_feedback(
         title="Second older item",
         description="Same day as the older feedback.",
         source="call",
@@ -106,12 +108,10 @@ def test_dashboard_zero_fills_last_seven_days(
     )
 
     assert response.status_code == 200
-    assert response.json()["daily_trend"] == [
-        {"date": "2026-03-13", "count": 0},
-        {"date": "2026-03-14", "count": 0},
-        {"date": "2026-03-15", "count": 0},
-        {"date": "2026-03-16", "count": 2},
-        {"date": "2026-03-17", "count": 0},
-        {"date": "2026-03-18", "count": 0},
-        {"date": "2026-03-19", "count": 1},
-    ]
+    expected = []
+    for day_offset in range(6, -1, -1):
+        day = current_day - timedelta(days=day_offset)
+        count = 2 if day_offset == 3 else 1 if day_offset == 0 else 0
+        expected.append({"date": day.isoformat(), "count": count})
+
+    assert response.json()["daily_trend"] == expected

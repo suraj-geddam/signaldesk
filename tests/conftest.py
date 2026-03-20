@@ -1,101 +1,170 @@
-from collections.abc import AsyncGenerator, Generator, Mapping
-from datetime import UTC, date, datetime, timedelta
-from hashlib import md5
-from json import loads
-from typing import TypedDict, cast
-from uuid import UUID, uuid4
+# ruff: noqa: E402
 
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+from collections.abc import Awaitable, Callable, Coroutine, Generator
+from dataclasses import dataclass
+from datetime import date, datetime
+from json import dumps
+from pathlib import Path
+from typing import TypeVar
+from urllib.parse import SplitResult, urlsplit, urlunsplit
+from uuid import UUID
+
+import asyncpg
 import pytest
+from asyncpg import Connection, Record
 from fastapi.testclient import TestClient
-from passlib.context import CryptContext
+
+DEFAULT_TEST_DATABASE_URL = "postgresql://signaldesk:signaldesk@localhost:5432/signaldesk_test"
+os.environ.setdefault("DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
+os.environ.setdefault("JWT_SECRET", "test-secret")
 
 import app.config as config_module
 import app.main as main_module
-from app.config import Settings, get_settings
-from app.db import get_connection
+from app.config import Settings
 from app.main import app
 from app.middleware import limiter
 
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+INIT_SQL_PATH = Path(__file__).resolve().parent.parent / "init.sql"
+T = TypeVar("T")
+
+def run_async[T](awaitable: Coroutine[object, object, T]) -> T:
+    return asyncio.run(awaitable)
 
 
-class UserWithPasswordDict(TypedDict):
-    id: UUID
-    username: str
-    password_hash: str
-    role: str
-    created_at: datetime
+def _split_database_url(database_url: str) -> SplitResult:
+    parsed = urlsplit(database_url)
+    if not parsed.scheme or not parsed.netloc or not parsed.path:
+        raise RuntimeError(f"Invalid DATABASE_URL for tests: {database_url!r}")
+    return parsed
 
 
-class UserDict(TypedDict):
-    id: UUID
-    username: str
-    role: str
-    created_at: datetime
+def _database_name(database_url: str) -> str:
+    name = _split_database_url(database_url).path.lstrip("/")
+    if not name:
+        raise RuntimeError("DATABASE_URL must include a database name for tests.")
+    return name
 
 
-class FeedbackDict(TypedDict):
-    id: UUID
-    title: str
-    description: str
-    source: str
-    priority: str
-    status: str
-    created_by: UUID
-    idempotency_key: str | None
-    created_at: datetime
-    updated_at: datetime
+def _admin_database_url(database_url: str) -> str:
+    parsed = _split_database_url(database_url)
+    return urlunsplit(parsed._replace(path="/postgres"))
 
 
-class AiSummaryDict(TypedDict):
-    id: UUID
-    insights: list[dict[str, object]]
-    feedback_hash: str
-    feedback_count: int
-    model_used: str
-    generated_at: datetime
+def _validate_test_database_name(database_name: str) -> None:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", database_name):
+        raise RuntimeError(f"Unsafe test database name: {database_name!r}")
+    if not database_name.endswith("_test"):
+        raise RuntimeError(
+            f"Refusing to run tests against non-test database {database_name!r}. "
+            "Set DATABASE_URL to a dedicated *_test database.",
+        )
 
 
-class FakeConnection:
-    def __init__(self) -> None:
-        created_at = datetime(2026, 3, 19, tzinfo=UTC)
-        self._today = date(2026, 3, 19)
-        admin_id = uuid4()
-        member_id = uuid4()
-        self._clock_tick = 0
-        self.users_by_username: dict[str, UserWithPasswordDict] = {
-            "admin": {
-                "id": admin_id,
-                "username": "admin",
-                "password_hash": password_context.hash("admin123"),
-                "role": "admin",
-                "created_at": created_at,
-            },
-            "member": {
-                "id": member_id,
-                "username": "member",
-                "password_hash": password_context.hash("member123"),
-                "role": "member",
-                "created_at": created_at,
-            },
-        }
-        self.users_by_id: dict[UUID, UserDict] = {
-            row["id"]: {
-                "id": row["id"],
-                "username": row["username"],
-                "role": row["role"],
-                "created_at": row["created_at"],
-            }
-            for row in self.users_by_username.values()
-        }
-        self.feedback_by_id: dict[UUID, FeedbackDict] = {}
-        self.feedback_by_idempotency_key: dict[str, UUID] = {}
-        self.ai_summaries: list[AiSummaryDict] = []
+async def _ensure_test_database_exists(database_url: str) -> None:
+    database_name = _database_name(database_url)
+    _validate_test_database_name(database_name)
 
-    def _next_timestamp(self) -> datetime:
-        timestamp = datetime(2026, 3, 19, tzinfo=UTC) + timedelta(minutes=self._clock_tick)
-        self._clock_tick += 1
-        return timestamp
+    admin_connection = await asyncpg.connect(_admin_database_url(database_url))
+    try:
+        exists = await admin_connection.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = $1",
+            database_name,
+        )
+        if exists is None:
+            await admin_connection.execute(f'CREATE DATABASE "{database_name}"')
+    finally:
+        await admin_connection.close()
+
+
+async def _reset_schema(database_url: str) -> None:
+    connection = await asyncpg.connect(database_url)
+    try:
+        await connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        await connection.execute("CREATE SCHEMA public")
+        await connection.execute(INIT_SQL_PATH.read_text())
+    finally:
+        await connection.close()
+
+
+async def _truncate_test_data(database_url: str) -> None:
+    connection = await asyncpg.connect(database_url)
+    try:
+        await connection.execute("TRUNCATE TABLE ai_summaries, feedback RESTART IDENTITY CASCADE")
+    finally:
+        await connection.close()
+
+
+@dataclass
+class DatabaseHelper:
+    database_url: str
+
+    async def _connect(self) -> Connection:
+        return await asyncpg.connect(self.database_url)
+
+    async def _run_with_connection(
+        self,
+        callback: Callable[[Connection], Awaitable[T]],
+    ) -> T:
+        connection = await self._connect()
+        try:
+            return await callback(connection)
+        finally:
+            await connection.close()
+
+    def run_with_connection(
+        self,
+        callback: Callable[[Connection], Awaitable[T]],
+    ) -> T:
+        return run_async(self._run_with_connection(callback))
+
+    def execute(self, query: str, *args: object) -> str:
+        async def _execute(connection: Connection) -> str:
+            return await connection.execute(query, *args)
+
+        return self.run_with_connection(_execute)
+
+    def fetchrow(self, query: str, *args: object) -> Record | None:
+        async def _fetchrow(connection: Connection) -> Record | None:
+            return await connection.fetchrow(query, *args)
+
+        return self.run_with_connection(_fetchrow)
+
+    def fetchval(self, query: str, *args: object) -> object:
+        async def _fetchval(connection: Connection) -> object:
+            return await connection.fetchval(query, *args)
+
+        return self.run_with_connection(_fetchval)
+
+    def user_id(self, username: str) -> UUID:
+        user_id = self.fetchval("SELECT id FROM users WHERE username = $1", username)
+        if not isinstance(user_id, UUID):
+            raise RuntimeError(f"Expected seeded user {username!r} to exist in tests.")
+        return user_id
+
+    def current_date(self) -> date:
+        value = self.fetchval("SELECT CURRENT_DATE")
+        if not isinstance(value, date):
+            raise RuntimeError("Expected CURRENT_DATE to return a date.")
+        return value
+
+    def compute_feedback_hash(self) -> str:
+        row = self.fetchrow(
+            """
+            SELECT md5(string_agg(id::text || updated_at::text, ',' ORDER BY id)) AS hash
+            FROM feedback
+            """,
+        )
+        if row is None:
+            raise RuntimeError("Expected feedback hash query to return a row.")
+        value = row["hash"]
+        if not isinstance(value, str):
+            raise RuntimeError("Expected feedback hash query to return a string hash.")
+        return value
 
     def seed_feedback(
         self,
@@ -106,29 +175,52 @@ class FakeConnection:
         priority: str,
         status: str,
         created_by: UUID,
-        created_at: datetime,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+        idempotency_key: str | None = None,
     ) -> UUID:
-        feedback_id = uuid4()
-        self.feedback_by_id[feedback_id] = {
-            "id": feedback_id,
-            "title": title,
-            "description": description,
-            "source": source,
-            "priority": priority,
-            "status": status,
-            "created_by": created_by,
-            "idempotency_key": None,
-            "created_at": created_at,
-            "updated_at": created_at,
-        }
-        return feedback_id
+        async def _seed(connection: Connection) -> UUID:
+            row = await connection.fetchrow(
+                """
+                INSERT INTO feedback (
+                    title,
+                    description,
+                    source,
+                    priority,
+                    status,
+                    created_by,
+                    idempotency_key,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    COALESCE($8, now()),
+                    COALESCE($9, COALESCE($8, now()))
+                )
+                RETURNING id
+                """,
+                title,
+                description,
+                source,
+                priority,
+                status,
+                created_by,
+                idempotency_key,
+                created_at,
+                updated_at,
+            )
+            if row is None or not isinstance(row["id"], UUID):
+                raise RuntimeError("Expected seeded feedback row to return a UUID.")
+            return row["id"]
 
-    def compute_feedback_hash(self) -> str:
-        payload = ",".join(
-            f"{row['id']}{row['updated_at'].isoformat()}"
-            for row in sorted(self.feedback_by_id.values(), key=lambda row: row["id"])
-        )
-        return md5(payload.encode("utf-8")).hexdigest()
+        return self.run_with_connection(_seed)
 
     def seed_ai_summary(
         self,
@@ -139,325 +231,88 @@ class FakeConnection:
         model_used: str,
         generated_at: datetime,
     ) -> UUID:
-        summary_id = uuid4()
-        self.ai_summaries.append(
-            {
-                "id": summary_id,
-                "insights": insights,
-                "feedback_hash": feedback_hash,
-                "feedback_count": feedback_count,
-                "model_used": model_used,
-                "generated_at": generated_at,
-            }
-        )
-        self.ai_summaries.sort(key=lambda row: row["generated_at"], reverse=True)
-        return summary_id
-
-    def _sorted_feedback(self) -> list[FeedbackDict]:
-        return sorted(
-            self.feedback_by_id.values(),
-            key=lambda row: (row["created_at"], row["id"]),
-            reverse=True,
-        )
-
-    def _filtered_feedback(
-        self,
-        normalized_query: str,
-        args: tuple[object, ...],
-        *,
-        include_paging: bool,
-    ) -> list[FeedbackDict]:
-        index = 0
-        rows = self._sorted_feedback()
-
-        if "status = $" in normalized_query:
-            status_value = str(args[index])
-            rows = [row for row in rows if row["status"] == status_value]
-            index += 1
-        if "priority = $" in normalized_query:
-            priority_value = str(args[index])
-            rows = [row for row in rows if row["priority"] == priority_value]
-            index += 1
-        if "source = $" in normalized_query:
-            source_value = str(args[index])
-            rows = [row for row in rows if row["source"] == source_value]
-            index += 1
-        if "(title || ' ' || description) ILIKE" in normalized_query:
-            search_value = str(args[index]).strip("%").lower()
-            rows = [
-                row
-                for row in rows
-                if search_value in f"{row['title']} {row['description']}".lower()
-            ]
-            index += 1
-
-        if "ORDER BY CASE priority" in normalized_query:
-            priority_rank = {"high": 1, "medium": 2, "low": 3}
-            reverse = "END DESC" in normalized_query
-            rows = sorted(
-                rows,
-                key=lambda row: (priority_rank[row["priority"]], row["created_at"]),
-                reverse=reverse,
-            )
-        elif "ORDER BY created_at ASC" in normalized_query:
-            rows = sorted(rows, key=lambda row: row["created_at"])
-        else:
-            rows = sorted(rows, key=lambda row: row["created_at"], reverse=True)
-
-        if include_paging:
-            limit_arg = args[index]
-            offset_arg = args[index + 1]
-            if not isinstance(limit_arg, int) or not isinstance(offset_arg, int):
-                raise AssertionError("Paging arguments must be integers")
-            limit = limit_arg
-            offset = offset_arg
-            rows = rows[offset : offset + limit]
-
-        return list(rows)
-
-    async def fetchval(self, query: str, *args: object) -> object:
-        normalized_query = " ".join(query.split())
-        if normalized_query == "SELECT 1":
-            return 1
-        if normalized_query.startswith("SELECT COUNT(*) FROM feedback"):
-            return len(self._filtered_feedback(normalized_query, args, include_paging=False))
-        if normalized_query == "DELETE FROM feedback WHERE id = $1 RETURNING id":
-            feedback_id = args[0]
-            if not isinstance(feedback_id, UUID):
-                return None
-            row = self.feedback_by_id.pop(feedback_id, None)
-            if row is None:
-                return None
-            idempotency_key = row["idempotency_key"]
-            if isinstance(idempotency_key, str):
-                self.feedback_by_idempotency_key.pop(idempotency_key, None)
-            return feedback_id
-        raise AssertionError(f"Unhandled fetchval query: {normalized_query}")
-
-    async def fetchrow(
-        self,
-        query: str,
-        *args: object,
-    ) -> Mapping[str, object] | None:
-        normalized_query = " ".join(query.split())
-        if "FROM users WHERE username = $1" in normalized_query:
-            return self.users_by_username.get(str(args[0]))
-        if "FROM users WHERE id = $1" in normalized_query:
-            user_id = args[0]
-            if isinstance(user_id, UUID):
-                return self.users_by_id.get(user_id)
-        if normalized_query.startswith("INSERT INTO feedback"):
-            title, description, source, priority, status, created_by, idempotency_key = args
-            if not isinstance(created_by, UUID):
-                raise AssertionError("created_by must be a UUID")
-
-            if isinstance(idempotency_key, str):
-                existing_id = self.feedback_by_idempotency_key.get(idempotency_key)
-                if existing_id is not None:
-                    return None
-
-            feedback_id = uuid4()
-            timestamp = self._next_timestamp()
-            idempotency_key_value = str(idempotency_key) if idempotency_key is not None else None
-            row: FeedbackDict = {
-                "id": feedback_id,
-                "title": str(title),
-                "description": str(description),
-                "source": str(source),
-                "priority": str(priority),
-                "status": str(status),
-                "created_by": created_by,
-                "idempotency_key": idempotency_key_value,
-                "created_at": timestamp,
-                "updated_at": timestamp,
-            }
-            self.feedback_by_id[feedback_id] = row
-            if idempotency_key_value is not None:
-                self.feedback_by_idempotency_key[idempotency_key_value] = feedback_id
-            return row
-        if normalized_query == "SELECT * FROM feedback WHERE idempotency_key = $1":
-            feedback_id = self.feedback_by_idempotency_key.get(str(args[0]))
-            if feedback_id is None:
-                return None
-            return self.feedback_by_id[feedback_id]
-        if normalized_query == "SELECT * FROM feedback WHERE id = $1":
-            feedback_id = args[0]
-            if isinstance(feedback_id, UUID):
-                existing_row = self.feedback_by_id.get(feedback_id)
-                if existing_row is not None:
-                    return existing_row
-            return None
-        if normalized_query == "SELECT * FROM ai_summaries ORDER BY generated_at DESC LIMIT 1":
-            if not self.ai_summaries:
-                return None
-            return self.ai_summaries[0]
-        if (
-            "md5(string_agg(id::text || updated_at::text, ',' ORDER BY id))" in normalized_query
-            and "COUNT(*) AS count FROM feedback" in normalized_query
-        ):
-            return {
-                "hash": self.compute_feedback_hash(),
-                "count": len(self.feedback_by_id),
-            }
-        if (
-            normalized_query.startswith("UPDATE feedback SET")
-            and "created_by = $7" in normalized_query
-        ):
-            title, description, source, priority, status, feedback_id, created_by = args
-            if not isinstance(feedback_id, UUID) or not isinstance(created_by, UUID):
-                return None
-            existing_row = self.feedback_by_id.get(feedback_id)
-            if existing_row is None or existing_row["created_by"] != created_by:
-                return None
-            row = existing_row
-            row.update(
-                title=str(title),
-                description=str(description),
-                source=str(source),
-                priority=str(priority),
-                status=str(status),
-                updated_at=self._next_timestamp(),
-            )
-            return row
-        if (
-            normalized_query.startswith("UPDATE feedback SET")
-            and "WHERE id = $6" in normalized_query
-        ):
-            title, description, source, priority, status, feedback_id = args
-            if not isinstance(feedback_id, UUID):
-                return None
-            existing_row = self.feedback_by_id.get(feedback_id)
-            if existing_row is None:
-                return None
-            row = existing_row
-            row.update(
-                title=str(title),
-                description=str(description),
-                source=str(source),
-                priority=str(priority),
-                status=str(status),
-                updated_at=self._next_timestamp(),
-            )
-            return row
-        if normalized_query.startswith("INSERT INTO ai_summaries"):
-            insights, feedback_hash, feedback_count, model_used = args
-            if not isinstance(feedback_count, int):
-                raise AssertionError("feedback_count must be an int")
-            if not isinstance(insights, str):
-                raise AssertionError("insights payload must be serialized JSON")
-
-            generated_at = self._next_timestamp()
-            summary: AiSummaryDict = {
-                "id": uuid4(),
-                "insights": cast(list[dict[str, object]], loads(insights)),
-                "feedback_hash": str(feedback_hash),
-                "feedback_count": feedback_count,
-                "model_used": str(model_used),
-                "generated_at": generated_at,
-            }
-            self.ai_summaries.append(summary)
-            self.ai_summaries.sort(key=lambda row: row["generated_at"], reverse=True)
-            return summary
-        return None
-
-    async def fetch(self, query: str, *args: object) -> list[Mapping[str, object]]:
-        normalized_query = " ".join(query.split())
-        if normalized_query == "SELECT * FROM feedback ORDER BY created_at DESC LIMIT $1":
-            limit_arg = args[0]
-            if not isinstance(limit_arg, int):
-                raise AssertionError("Insights limit must be an int")
-            return [
-                cast(Mapping[str, object], row)
-                for row in self._sorted_feedback()[:limit_arg]
-            ]
-        if normalized_query.startswith("SELECT * FROM feedback"):
-            return [
-                cast(Mapping[str, object], row)
-                for row in self._filtered_feedback(normalized_query, args, include_paging=True)
-            ]
-        if normalized_query == "SELECT status, COUNT(*) AS count FROM feedback GROUP BY status":
-            counts = {"new": 0, "in_progress": 0, "done": 0}
-            for row in self.feedback_by_id.values():
-                counts[row["status"]] += 1
-            return [
-                {"status": status, "count": count}
-                for status, count in counts.items()
-                if count > 0
-            ]
-        if normalized_query == "SELECT priority, COUNT(*) AS count FROM feedback GROUP BY priority":
-            counts = {"low": 0, "medium": 0, "high": 0}
-            for row in self.feedback_by_id.values():
-                counts[row["priority"]] += 1
-            return [
-                {"priority": priority, "count": count}
-                for priority, count in counts.items()
-                if count > 0
-            ]
-        if (
-            normalized_query
-            == "SELECT d::date AS date, COALESCE(COUNT(f.id), 0) AS count "
-            "FROM generate_series(CURRENT_DATE - 6, CURRENT_DATE, '1 day') d "
-            "LEFT JOIN feedback f ON f.created_at::date = d::date "
-            "GROUP BY d::date ORDER BY d::date"
-        ):
-            rows: list[Mapping[str, object]] = []
-            for day_offset in range(7):
-                current_day = self._today - timedelta(days=6 - day_offset)
-                count = sum(
-                    1
-                    for row in self.feedback_by_id.values()
-                    if row["created_at"].date() == current_day
+        async def _seed(connection: Connection) -> UUID:
+            row = await connection.fetchrow(
+                """
+                INSERT INTO ai_summaries (
+                    insights,
+                    feedback_hash,
+                    feedback_count,
+                    model_used,
+                    generated_at
                 )
-                rows.append({"date": current_day, "count": count})
-            return rows
-        raise AssertionError(f"Unhandled fetch query: {normalized_query}")
+                VALUES ($1::jsonb, $2, $3, $4, $5)
+                RETURNING id
+                """,
+                dumps(insights),
+                feedback_hash,
+                feedback_count,
+                model_used,
+                generated_at,
+            )
+            if row is None or not isinstance(row["id"], UUID):
+                raise RuntimeError("Expected seeded AI summary row to return a UUID.")
+            return row["id"]
+
+        return self.run_with_connection(_seed)
+
+
+@pytest.fixture(scope="session")
+def database_url() -> str:
+    return os.getenv("DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def initialized_test_database(database_url: str) -> Generator[None, None, None]:
+    run_async(_ensure_test_database_exists(database_url))
+    run_async(_reset_schema(database_url))
+    yield
+
+
+@pytest.fixture(autouse=True)
+def reset_test_database(
+    initialized_test_database: None,
+    database_url: str,
+) -> Generator[None, None, None]:
+    del initialized_test_database
+    run_async(_truncate_test_data(database_url))
+    limiter._storage.reset()
+    config_module.get_settings.cache_clear()
+    yield
+    limiter._storage.reset()
+    config_module.get_settings.cache_clear()
 
 
 @pytest.fixture
-def fake_connection() -> FakeConnection:
-    return FakeConnection()
+def settings(database_url: str) -> Settings:
+    return Settings(
+        database_url=database_url,
+        jwt_secret="test-secret",
+    )
+
+
+@pytest.fixture
+def db(database_url: str) -> DatabaseHelper:
+    return DatabaseHelper(database_url)
 
 
 @pytest.fixture
 def client(
     monkeypatch: pytest.MonkeyPatch,
-    fake_connection: FakeConnection,
+    database_url: str,
+    initialized_test_database: None,
 ) -> Generator[TestClient, None, None]:
-    monkeypatch.setenv(
-        "DATABASE_URL",
-        "postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
-    )
+    del initialized_test_database
+    monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     monkeypatch.setenv("RATE_LIMIT_DEFAULT", "60/minute")
     monkeypatch.setenv("RATE_LIMIT_LOGIN", "10/minute")
     monkeypatch.setenv("RATE_LIMIT_AI_REFRESH", "5/minute")
     config_module.get_settings.cache_clear()
-
-    settings = Settings(
-        database_url="postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
-        jwt_secret="test-secret",
-    )
-
-    async def fake_init_pool(settings: Settings) -> None:
-        del settings
-
-    async def fake_close_pool() -> None:
-        return None
-
-    async def override_get_connection() -> AsyncGenerator[FakeConnection, None]:
-        yield fake_connection
-
-    monkeypatch.setattr(main_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(main_module, "init_pool", fake_init_pool)
-    monkeypatch.setattr(main_module, "close_pool", fake_close_pool)
-
-    app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[get_connection] = override_get_connection
-    limiter._storage.reset()
+    monkeypatch.setattr(main_module, "start_periodic_ai_refresh", lambda settings: None)
 
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
-        app.dependency_overrides.clear()
         config_module.get_settings.cache_clear()

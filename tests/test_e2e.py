@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
+from json import dumps
 
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
 import app.insights as insights_module
-
-from .conftest import FakeConnection
 
 
 def login(client: TestClient, username: str, password: str) -> dict[str, str]:
@@ -19,7 +19,7 @@ def login(client: TestClient, username: str, password: str) -> dict[str, str]:
 
 def test_backend_happy_path_covers_core_workflow(
     client: TestClient,
-    fake_connection: FakeConnection,
+    database_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     generated_at = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
@@ -99,21 +99,49 @@ def test_backend_happy_path_covers_core_workflow(
 
     async def fake_run_generate_insights(settings: object) -> object:
         del settings
-        return fake_connection.seed_ai_summary(
-            insights=[
-                {
-                    "theme": "Export compliance workflows",
-                    "confidence": 0.91,
-                    "justification": (
-                        "The created feedback item requests SOC2 and CSV export support."
-                    ),
-                }
-            ],
-            feedback_hash=fake_connection.compute_feedback_hash(),
-            feedback_count=len(fake_connection.feedback_by_id),
-            model_used="test-model",
-            generated_at=generated_at,
-        )
+        connection = await asyncpg.connect(database_url)
+        try:
+            insights_payload = dumps(
+                [
+                    {
+                        "theme": "Export compliance workflows",
+                        "confidence": 0.91,
+                        "justification": (
+                            "The created feedback item requests SOC2 and CSV export support."
+                        ),
+                    }
+                ],
+            )
+            feedback_state = await connection.fetchrow(
+                """
+                SELECT
+                    md5(string_agg(id::text || updated_at::text, ',' ORDER BY id)) AS hash,
+                    COUNT(*) AS count
+                FROM feedback
+                """,
+            )
+            if feedback_state is None:
+                raise RuntimeError("Expected feedback rows before generating insights in e2e test.")
+            return await connection.fetchval(
+                """
+                INSERT INTO ai_summaries (
+                    insights,
+                    feedback_hash,
+                    feedback_count,
+                    model_used,
+                    generated_at
+                )
+                VALUES ($1::jsonb, $2, $3, $4, $5)
+                RETURNING id
+                """,
+                insights_payload,
+                feedback_state["hash"],
+                feedback_state["count"],
+                "test-model",
+                generated_at,
+            )
+        finally:
+            await connection.close()
 
     monkeypatch.setattr(insights_module, "run_generate_insights", fake_run_generate_insights)
 

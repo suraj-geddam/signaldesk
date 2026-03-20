@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from datetime import date
-from json import dumps
+from json import dumps, loads
 from uuid import UUID
 
 from asyncpg import Record
@@ -50,7 +50,11 @@ def _trend_from_record(record: Record | Mapping[str, object]) -> DailyTrend:
 
 
 def _ai_summary_from_record(record: Record | Mapping[str, object]) -> AiSummaryRow:
-    return AiSummaryRow.model_validate(_record_to_dict(record))
+    data = _record_to_dict(record)
+    raw_insights = data.get("insights")
+    if isinstance(raw_insights, str):
+        data["insights"] = loads(raw_insights)
+    return AiSummaryRow.model_validate(data)
 
 
 async def get_user_by_username(

@@ -1,13 +1,15 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
 import app.insights as insights_module
 from app.config import Settings
 
-from .conftest import FakeConnection
+from .conftest import DatabaseHelper
 
 
 class FakeParsedMessage:
@@ -102,11 +104,11 @@ def test_get_insights_without_summary_returns_placeholder(client: TestClient) ->
 
 def test_get_insights_with_fresh_summary_returns_cached_row(
     client: TestClient,
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     generated_at = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
-    fake_connection.seed_ai_summary(
+    db.seed_ai_summary(
         insights=[
             {
                 "theme": "CSV exports",
@@ -139,11 +141,11 @@ def test_get_insights_with_fresh_summary_returns_cached_row(
 
 def test_get_insights_with_stale_summary_marks_response_stale(
     client: TestClient,
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     generated_at = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
-    fake_connection.seed_ai_summary(
+    db.seed_ai_summary(
         insights=[
             {
                 "theme": "Notification gaps",
@@ -172,14 +174,11 @@ def test_get_insights_with_stale_summary_marks_response_stale(
 
 
 def test_generate_insights_skips_when_feedback_hash_is_unchanged(
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
+    settings: Settings,
 ) -> None:
-    settings = Settings(
-        database_url="postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
-        jwt_secret="test-secret",
-    )
-    member_id = fake_connection.users_by_username["member"]["id"]
-    fake_connection.seed_feedback(
+    member_id = db.user_id("member")
+    db.seed_feedback(
         title="Export to CSV",
         description="Need downloads.",
         source="email",
@@ -188,7 +187,7 @@ def test_generate_insights_skips_when_feedback_hash_is_unchanged(
         created_by=member_id,
         created_at=datetime(2026, 3, 19, 10, 0, tzinfo=UTC),
     )
-    fake_connection.seed_ai_summary(
+    db.seed_ai_summary(
         insights=[
             {
                 "theme": "Existing",
@@ -196,33 +195,30 @@ def test_generate_insights_skips_when_feedback_hash_is_unchanged(
                 "justification": "Existing cached insight.",
             }
         ],
-        feedback_hash=fake_connection.compute_feedback_hash(),
+        feedback_hash=db.compute_feedback_hash(),
         feedback_count=1,
         model_used="gpt-4o-mini",
         generated_at=datetime(2026, 3, 19, 10, 5, tzinfo=UTC),
     )
 
-    inserted = asyncio.run(
-        insights_module.generate_insights(
-            fake_connection,
+    inserted = db.run_with_connection(
+        lambda connection: insights_module.generate_insights(
+            connection,
             settings,
             client=FailingClient(),
-        )
+        ),
     )
 
     assert inserted is None
-    assert len(fake_connection.ai_summaries) == 1
+    assert db.fetchval("SELECT COUNT(*) FROM ai_summaries") == 1
 
 
 def test_generate_insights_failure_does_not_overwrite_cached_summary(
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
+    settings: Settings,
 ) -> None:
-    settings = Settings(
-        database_url="postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
-        jwt_secret="test-secret",
-    )
-    member_id = fake_connection.users_by_username["member"]["id"]
-    fake_connection.seed_feedback(
+    member_id = db.user_id("member")
+    db.seed_feedback(
         title="Slack alerts",
         description="Need alert routing.",
         source="slack",
@@ -231,7 +227,7 @@ def test_generate_insights_failure_does_not_overwrite_cached_summary(
         created_by=member_id,
         created_at=datetime(2026, 3, 19, 9, 0, tzinfo=UTC),
     )
-    fake_connection.seed_ai_summary(
+    db.seed_ai_summary(
         insights=[
             {
                 "theme": "Cached summary",
@@ -246,31 +242,31 @@ def test_generate_insights_failure_does_not_overwrite_cached_summary(
     )
 
     try:
-        asyncio.run(
-            insights_module.generate_insights(
-                fake_connection,
+        db.run_with_connection(
+            lambda connection: insights_module.generate_insights(
+                connection,
                 settings,
                 client=FailingClient(),
-            )
+            ),
         )
     except RuntimeError as exc:
         assert "AI unavailable" in str(exc)
     else:
         raise AssertionError("Expected AI failure to propagate")
 
-    assert len(fake_connection.ai_summaries) == 1
-    assert fake_connection.ai_summaries[0]["insights"][0]["theme"] == "Cached summary"
+    latest_theme = db.fetchval(
+        "SELECT insights->0->>'theme' FROM ai_summaries ORDER BY generated_at DESC LIMIT 1",
+    )
+    assert db.fetchval("SELECT COUNT(*) FROM ai_summaries") == 1
+    assert latest_theme == "Cached summary"
 
 
 def test_generate_insights_rejects_malformed_ai_response(
-    fake_connection: FakeConnection,
+    db: DatabaseHelper,
+    settings: Settings,
 ) -> None:
-    settings = Settings(
-        database_url="postgresql://signaldesk:signaldesk@localhost:5432/signaldesk",
-        jwt_secret="test-secret",
-    )
-    member_id = fake_connection.users_by_username["member"]["id"]
-    fake_connection.seed_feedback(
+    member_id = db.user_id("member")
+    db.seed_feedback(
         title="Audit exports",
         description="Need better exports.",
         source="call",
@@ -281,19 +277,19 @@ def test_generate_insights_rejects_malformed_ai_response(
     )
 
     try:
-        asyncio.run(
-            insights_module.generate_insights(
-                fake_connection,
+        db.run_with_connection(
+            lambda connection: insights_module.generate_insights(
+                connection,
                 settings,
                 client=MalformedClient(),
-            )
+            ),
         )
     except RuntimeError as exc:
         assert "parsed insights payload" in str(exc)
     else:
         raise AssertionError("Expected malformed AI response to fail")
 
-    assert fake_connection.ai_summaries == []
+    assert db.fetchval("SELECT COUNT(*) FROM ai_summaries") == 0
 
 
 def test_admin_refresh_endpoint_returns_accepted(
@@ -315,3 +311,41 @@ def test_admin_refresh_endpoint_returns_accepted(
     assert response.status_code == 202
     assert response.json() == {"message": "Refresh started"}
     assert calls == ["called"]
+
+
+def test_periodic_ai_refresh_logs_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    settings: Settings,
+) -> None:
+    class DummyPool:
+        def acquire(self) -> object:
+            async def _yield_connection() -> asyncpg.Connection:
+                raise RuntimeError("query failure")
+
+            return _AcquireContextManager(_yield_connection)
+
+    class _AcquireContextManager:
+        def __init__(self, factory: Callable[[], Awaitable[object]]) -> None:
+            self._factory = factory
+
+        async def __aenter__(self) -> object:
+            return await self._factory()
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            del exc_type, exc, tb
+            return False
+
+    async def fake_sleep(_: float) -> None:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(insights_module.db_module, "pool", DummyPool())
+    monkeypatch.setattr(insights_module.asyncio, "sleep", fake_sleep)
+    caplog.set_level("ERROR", logger="signaldesk.insights")
+
+    try:
+        asyncio.run(insights_module.periodic_ai_refresh(settings))
+    except asyncio.CancelledError:
+        pass
+
+    assert "periodic_ai_refresh_failed" in caplog.text

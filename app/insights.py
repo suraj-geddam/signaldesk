@@ -10,6 +10,7 @@ from app import db as db_module
 from app.auth import get_current_user, require_admin
 from app.config import Settings, get_settings
 from app.db import DatabaseConnection, get_connection
+from app.logging import get_logger
 from app.middleware import limiter
 from app.queries import (
     get_feedback_hash_and_count,
@@ -20,6 +21,7 @@ from app.queries import (
 from app.schemas import Insight, InsightsResponse, UserRow
 
 router = APIRouter(tags=["insights"])
+logger = get_logger("signaldesk.insights")
 
 INSIGHTS_PLACEHOLDER_MESSAGE = "No insights generated yet."
 INSIGHTS_SYSTEM_PROMPT = """You are an analyst for a customer feedback triage tool.
@@ -122,14 +124,14 @@ async def periodic_ai_refresh(settings: Settings) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            pass
+            logger.exception("periodic_ai_refresh_failed")
 
         await asyncio.sleep(settings.ai_refresh_interval_minutes * 60)
 
 
 def start_periodic_ai_refresh(settings: Settings) -> asyncio.Task[None] | None:
     if db_module.pool is None:
-        return None
+        raise RuntimeError("Database pool must be initialized before starting periodic AI refresh.")
 
     return asyncio.create_task(periodic_ai_refresh(settings))
 
