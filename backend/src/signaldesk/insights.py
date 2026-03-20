@@ -74,14 +74,33 @@ async def generate_insights(
     settings: Settings,
     *,
     client: Any | None = None,
+    force: bool = False,
 ) -> object | None:
     feedback_hash, feedback_count = await get_feedback_hash_and_count(connection)
     latest = await get_latest_summary(connection)
-    if latest is not None and latest.feedback_hash == feedback_hash:
+    if latest is not None and latest.feedback_hash == feedback_hash and not force:
+        logger.info(
+            "insights_generation_skipped",
+            reason="unchanged_feedback_hash",
+            feedback_count=feedback_count,
+            model=settings.openai_model,
+        )
         return None
     if feedback_count == 0:
+        logger.info(
+            "insights_generation_skipped",
+            reason="no_feedback",
+            feedback_count=feedback_count,
+            model=settings.openai_model,
+        )
         return None
 
+    logger.info(
+        "insights_generation_started",
+        feedback_count=feedback_count,
+        model=settings.openai_model,
+        force=force,
+    )
     feedback_items = await list_feedback_for_insights(connection, settings.ai_max_feedback_items)
     openai_client = client if client is not None else create_openai_client(settings)
     completion = await openai_client.chat.completions.parse(
@@ -96,21 +115,41 @@ async def generate_insights(
     if not isinstance(parsed, InsightGenerationResult):
         raise RuntimeError("OpenAI client returned no parsed insights payload.")
 
-    return await insert_ai_summary(
+    summary = await insert_ai_summary(
         connection,
         insights=parsed.insights,
         feedback_hash=feedback_hash,
         feedback_count=feedback_count,
         model_used=settings.openai_model,
     )
+    logger.info(
+        "insights_generation_succeeded",
+        feedback_count=feedback_count,
+        model=settings.openai_model,
+        force=force,
+        insight_count=len(parsed.insights),
+    )
+    return summary
 
 
-async def run_generate_insights(settings: Settings) -> object | None:
+async def run_generate_insights(settings: Settings, *, force: bool = False) -> object | None:
     if db_module.pool is None:
         return None
 
-    async with db_module.pool.acquire() as connection:
-        return await generate_insights(cast(DatabaseConnection, connection), settings)
+    try:
+        async with db_module.pool.acquire() as connection:
+            return await generate_insights(
+                cast(DatabaseConnection, connection),
+                settings,
+                force=force,
+            )
+    except Exception:
+        logger.exception(
+            "insights_generation_failed",
+            model=settings.openai_model,
+            force=force,
+        )
+        raise
 
 
 async def periodic_ai_refresh(settings: Settings) -> None:
@@ -174,5 +213,5 @@ async def refresh_insights_endpoint(
     user: Annotated[UserRow, Depends(require_admin)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
-    background_tasks.add_task(run_generate_insights, settings)
+    background_tasks.add_task(run_generate_insights, settings, force=True)
     return {"message": "Refresh started"}

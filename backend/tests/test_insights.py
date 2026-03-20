@@ -213,6 +213,51 @@ def test_generate_insights_skips_when_feedback_hash_is_unchanged(
     assert db.fetchval("SELECT COUNT(*) FROM ai_summaries") == 1
 
 
+def test_generate_insights_force_regenerates_when_feedback_hash_is_unchanged(
+    db: DatabaseHelper,
+    settings: Settings,
+) -> None:
+    member_id = db.user_id("member")
+    db.seed_feedback(
+        title="Export to CSV",
+        description="Need downloads.",
+        source="email",
+        priority="high",
+        status="new",
+        created_by=member_id,
+        created_at=datetime(2026, 3, 19, 10, 0, tzinfo=UTC),
+    )
+    db.seed_ai_summary(
+        insights=[
+            {
+                "theme": "Existing",
+                "confidence": 0.5,
+                "justification": "Existing cached insight.",
+            }
+        ],
+        feedback_hash=db.compute_feedback_hash(),
+        feedback_count=1,
+        model_used="gpt-4o-mini",
+        generated_at=datetime(2026, 3, 19, 10, 5, tzinfo=UTC),
+    )
+
+    inserted = db.run_with_connection(
+        lambda connection: insights_module.generate_insights(
+            connection,
+            settings,
+            client=SuccessfulClient(),
+            force=True,
+        ),
+    )
+
+    assert inserted is not None
+    assert db.fetchval("SELECT COUNT(*) FROM ai_summaries") == 2
+    latest_theme = db.fetchval(
+        "SELECT insights->0->>'theme' FROM ai_summaries ORDER BY generated_at DESC LIMIT 1",
+    )
+    assert latest_theme == "Export workflow pain"
+
+
 def test_generate_insights_failure_does_not_overwrite_cached_summary(
     db: DatabaseHelper,
     settings: Settings,
@@ -296,10 +341,10 @@ def test_admin_refresh_endpoint_returns_accepted(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[str] = []
+    calls: list[bool] = []
 
-    async def fake_run_generate_insights(_: Settings) -> None:
-        calls.append("called")
+    async def fake_run_generate_insights(_: Settings, *, force: bool = False) -> None:
+        calls.append(force)
 
     monkeypatch.setattr(insights_module, "run_generate_insights", fake_run_generate_insights)
 
@@ -310,7 +355,7 @@ def test_admin_refresh_endpoint_returns_accepted(
 
     assert response.status_code == 202
     assert response.json() == {"message": "Refresh started"}
-    assert calls == ["called"]
+    assert calls == [True]
 
 
 def test_periodic_ai_refresh_logs_failures(

@@ -97,8 +97,9 @@ def test_backend_happy_path_covers_core_workflow(
     forbidden_refresh = client.post("/feedback/insights/refresh", headers=member_headers)
     assert forbidden_refresh.status_code == 403
 
-    async def fake_run_generate_insights(settings: object) -> object:
+    async def fake_run_generate_insights(settings: object, *, force: bool = False) -> object:
         del settings
+        assert force is True
         connection = await asyncpg.connect(database_url)
         try:
             insights_payload = dumps(
