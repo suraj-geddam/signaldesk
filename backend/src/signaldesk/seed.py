@@ -5,8 +5,8 @@ from asyncio import run
 from dataclasses import dataclass
 from os import getenv
 
-import bcrypt
 import asyncpg
+import bcrypt
 from asyncpg import Connection
 
 from signaldesk.bootstrap import initialize_database
