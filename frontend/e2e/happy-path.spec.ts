@@ -1,25 +1,30 @@
 import { test, expect } from "@playwright/test";
 
-// react-hot-toast renders a fixed overlay at z-index 9999 with
-// pointer-events:none. Playwright's actionability checks see it as
-// covering buttons and refuses to click. We hide it on every page load.
-async function dismissToastOverlay(page: import("@playwright/test").Page) {
-  await page.addStyleTag({
-    content: "[data-rht-toaster] { display: none !important; }",
+test.beforeEach(async ({ page }) => {
+  // react-hot-toast renders a fixed overlay at z-index 9999 with
+  // pointer-events:none. Playwright's actionability checks see it as
+  // covering buttons. Hide it on every page load via an init script.
+  await page.addInitScript(() => {
+    const observer = new MutationObserver(() => {
+      document
+        .querySelectorAll<HTMLElement>("[data-rht-toaster]")
+        .forEach((el) => (el.style.display = "none"));
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
   });
-}
+});
 
 test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
   // ── Login as member ──────────────────────────────────────────────
   await test.step("login as member", async () => {
     await page.goto("/login");
     await page.waitForLoadState("networkidle");
-    await dismissToastOverlay(page);
+
     await page.getByLabel("Username").fill("member");
     await page.getByLabel("Password").fill("member123");
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL("**/feedback**");
-    await dismissToastOverlay(page);
+
     await expect(page.getByText("member").first()).toBeVisible();
   });
 
@@ -44,7 +49,7 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
       page.getByRole("heading", { name: "New feedback" }),
     ).not.toBeVisible();
     await expect(
-      page.getByRole("cell", { name: /SOC2 export support/ }),
+      page.getByRole("cell", { name: /SOC2 export support/ }).first(),
     ).toBeVisible();
   });
 
@@ -63,6 +68,7 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
     await page
       .getByRole("row")
       .filter({ hasText: "SOC2 export support" })
+      .first()
       .click();
     await expect(
       page.getByRole("heading", { name: "E2E: SOC2 export support" }),
@@ -107,7 +113,7 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
   // ── Dashboard ────────────────────────────────────────────────────
   await test.step("dashboard shows correct counts", async () => {
     await page.getByRole("link", { name: "Dashboard" }).click();
-    await dismissToastOverlay(page);
+
     await expect(
       page.getByRole("heading", { name: "Dashboard" }),
     ).toBeVisible();
@@ -124,7 +130,7 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
   // ── Insights (member — no refresh button) ────────────────────────
   await test.step("insights shows empty state for member", async () => {
     await page.getByRole("link", { name: "Insights" }).click();
-    await dismissToastOverlay(page);
+
     await expect(
       page.getByRole("heading", { name: "Insights" }),
     ).toBeVisible();
@@ -142,19 +148,19 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
 
   // ── Login as admin ───────────────────────────────────────────────
   await test.step("login as admin", async () => {
-    await dismissToastOverlay(page);
+
     await page.getByLabel("Username").fill("admin");
     await page.getByLabel("Password").fill("admin123");
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL("**/feedback**");
-    await dismissToastOverlay(page);
+
     await expect(page.getByText("admin").first()).toBeVisible();
   });
 
   // ── Insights (admin — refresh button visible) ────────────────────
   await test.step("admin can trigger insights refresh", async () => {
     await page.getByRole("link", { name: "Insights" }).click();
-    await dismissToastOverlay(page);
+
     await expect(
       page.getByRole("button", { name: "Refresh insights" }),
     ).toBeVisible();
@@ -202,9 +208,9 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
   // ── Delete feedback (admin) ──────────────────────────────────────
   await test.step("admin deletes feedback", async () => {
     await page.getByRole("link", { name: "Feedback" }).click();
-    await dismissToastOverlay(page);
+
     await expect(
-      page.getByRole("cell", { name: /SOC2 export support/ }),
+      page.getByRole("cell", { name: /SOC2 export support/ }).first(),
     ).toBeVisible();
 
     // Click the three-dot actions menu
