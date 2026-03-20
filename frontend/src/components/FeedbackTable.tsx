@@ -11,7 +11,13 @@ interface FeedbackTableProps {
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function ActionsMenu({
@@ -80,7 +86,7 @@ export function FeedbackTable({
             <th className="pb-2.5 w-24">Status</th>
             <th className="pb-2.5 w-20">Priority</th>
             <th className="pb-2.5 w-17">Source</th>
-            <th className="pb-2.5 w-19">Created</th>
+            <th className="pb-2.5 w-40">Created</th>
             <th className="pb-2.5 w-9 pr-4"></th>
           </tr>
         </thead>
