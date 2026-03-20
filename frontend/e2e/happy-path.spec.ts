@@ -87,22 +87,11 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
       page.getByRole("heading", { name: "Edit feedback" }),
     ).toBeVisible();
 
-    // selectOption triggers React's change handler and may auto-submit
-    // the form. Either way, the PUT request goes through.
     await page
       .getByRole("dialog")
       .getByLabel("Status")
       .selectOption("in_progress");
-
-    // If the dialog is still open (auto-submit didn't happen), click Save.
-    if (await page.getByRole("dialog").isVisible().catch(() => false)) {
-      await page.evaluate(() => {
-        const form = document.getElementById(
-          "edit-feedback-form",
-        ) as HTMLFormElement;
-        form?.requestSubmit();
-      });
-    }
+    await page.getByRole("button", { name: "Save" }).click();
 
     // Table shows updated status
     await expect(

@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import React, { type FormEvent, useState } from "react";
 import toast from "react-hot-toast";
 import { updateFeedback } from "../api";
 import { useAuth } from "../hooks/useAuth";
@@ -83,8 +83,8 @@ export function FeedbackDetailModal({
     onClose();
   }
 
-  async function handleSave(e: FormEvent) {
-    e.preventDefault();
+  async function handleSave(e?: FormEvent | React.MouseEvent) {
+    e?.preventDefault();
     if (!token || !feedback) return;
 
     setSubmitting(true);
@@ -126,8 +126,7 @@ export function FeedbackDetailModal({
         Cancel
       </Button>
       <Button
-        type="submit"
-        form="edit-feedback-form"
+        onClick={handleSave}
         loading={submitting}
       >
         Save
