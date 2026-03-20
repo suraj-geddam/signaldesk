@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.db import DatabaseConnection, get_connection
-from app.schemas import HealthResponse
+from signaldesk.db import DatabaseConnection, get_connection
+from signaldesk.schemas import HealthResponse
 
 router = APIRouter(tags=["health"])
 

@@ -8,17 +8,17 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.auth import router as auth_router
-from app.bootstrap import initialize_database_pool
-from app.config import get_settings
-from app.dashboard import router as dashboard_router
-from app.db import close_pool, init_pool
-from app.feedback import router as feedback_router
-from app.health import router as health_router
-from app.insights import router as insights_router
-from app.insights import start_periodic_ai_refresh
-from app.logging import configure_logging
-from app.middleware import (
+from signaldesk.auth import router as auth_router
+from signaldesk.bootstrap import initialize_database_pool
+from signaldesk.config import get_settings
+from signaldesk.dashboard import router as dashboard_router
+from signaldesk.db import close_pool, init_pool
+from signaldesk.feedback import router as feedback_router
+from signaldesk.health import router as health_router
+from signaldesk.insights import router as insights_router
+from signaldesk.insights import start_periodic_ai_refresh
+from signaldesk.logging import configure_logging
+from signaldesk.middleware import (
     http_exception_handler,
     limiter,
     rate_limit_exception_handler,

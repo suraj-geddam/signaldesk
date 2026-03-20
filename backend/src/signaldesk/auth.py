@@ -7,11 +7,11 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import ValidationError
 
-from app.config import Settings, get_settings
-from app.db import DatabaseConnection, get_connection
-from app.middleware import limiter
-from app.queries import get_user_by_id, get_user_by_username
-from app.schemas import LoginRequest, LoginResponse, Role, TokenPayload, UserRow
+from signaldesk.config import Settings, get_settings
+from signaldesk.db import DatabaseConnection, get_connection
+from signaldesk.middleware import limiter
+from signaldesk.queries import get_user_by_id, get_user_by_username
+from signaldesk.schemas import LoginRequest, LoginResponse, Role, TokenPayload, UserRow
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")

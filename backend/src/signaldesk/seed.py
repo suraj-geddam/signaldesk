@@ -9,7 +9,7 @@ import asyncpg
 from asyncpg import Connection
 from passlib.context import CryptContext
 
-from app.bootstrap import initialize_database
+from signaldesk.bootstrap import initialize_database
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

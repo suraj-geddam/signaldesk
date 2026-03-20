@@ -20,7 +20,7 @@ export default function globalSetup(): void {
       "-lc",
       [
         `DATABASE_URL=${databaseUrl}`,
-        "uv run python -m app.seed users",
+        "uv run python -m signaldesk.seed users",
         `--database-url ${databaseUrl}`,
         "--use-demo-passwords",
       ].join(" "),

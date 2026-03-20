@@ -5,8 +5,8 @@ from uuid import UUID
 
 from asyncpg import Record
 
-from app.db import DatabaseConnection
-from app.schemas import (
+from signaldesk.db import DatabaseConnection
+from signaldesk.schemas import (
     AiSummaryRow,
     DailyTrend,
     DashboardResponse,

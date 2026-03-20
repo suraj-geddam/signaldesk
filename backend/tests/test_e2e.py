@@ -5,7 +5,7 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-import app.insights as insights_module
+import signaldesk.insights as insights_module
 
 
 def login(client: TestClient, username: str, password: str) -> dict[str, str]:

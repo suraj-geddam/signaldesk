@@ -6,19 +6,19 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from app import db as db_module
-from app.auth import get_current_user, require_admin
-from app.config import Settings, get_settings
-from app.db import DatabaseConnection, get_connection
-from app.logging import get_logger
-from app.middleware import limiter
-from app.queries import (
+from signaldesk import db as db_module
+from signaldesk.auth import get_current_user, require_admin
+from signaldesk.config import Settings, get_settings
+from signaldesk.db import DatabaseConnection, get_connection
+from signaldesk.logging import get_logger
+from signaldesk.middleware import limiter
+from signaldesk.queries import (
     get_feedback_hash_and_count,
     get_latest_summary,
     insert_ai_summary,
     list_feedback_for_insights,
 )
-from app.schemas import Insight, InsightsResponse, UserRow
+from signaldesk.schemas import Insight, InsightsResponse, UserRow
 
 router = APIRouter(tags=["insights"])
 logger = get_logger("signaldesk.insights")

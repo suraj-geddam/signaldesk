@@ -2,14 +2,14 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-import app.config as config_module
-import app.main as main_module
-from app.main import app
+import signaldesk.config as config_module
+import signaldesk.main as main_module
+from signaldesk.main import app
 from tests.conftest import clear_database_schema, run_async
 
 
 def test_database_bootstrap_is_idempotent(database_url: str) -> None:
-    import app.bootstrap as bootstrap_module
+    import signaldesk.bootstrap as bootstrap_module
 
     async def _exercise() -> None:
         connection = await asyncpg.connect(database_url)
@@ -41,7 +41,7 @@ def test_app_startup_bootstraps_schema_but_requires_explicit_seeding(
     monkeypatch: pytest.MonkeyPatch,
     database_url: str,
 ) -> None:
-    import app.seed as seed_module
+    import signaldesk.seed as seed_module
 
     clear_database_schema(database_url)
     monkeypatch.setenv("DATABASE_URL", database_url)

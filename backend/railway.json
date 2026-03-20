@@ -3,7 +3,7 @@
   "build": {
     "builder": "DOCKERFILE",
     "watchPatterns": [
-      "app/**",
+      "src/**",
       "Dockerfile",
       "init.sql",
       "pyproject.toml",
@@ -12,7 +12,7 @@
     ]
   },
   "deploy": {
-    "preDeployCommand": "python -m app.bootstrap",
+    "preDeployCommand": "python -m signaldesk.bootstrap",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10

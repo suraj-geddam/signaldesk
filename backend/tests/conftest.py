@@ -23,11 +23,11 @@ DEFAULT_TEST_DATABASE_URL = "postgresql://signaldesk:signaldesk@localhost:5432/s
 os.environ.setdefault("DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
 os.environ.setdefault("JWT_SECRET", "test-secret")
 
-import app.config as config_module
-import app.main as main_module
-from app.config import Settings
-from app.main import app
-from app.middleware import limiter
+import signaldesk.config as config_module
+import signaldesk.main as main_module
+from signaldesk.config import Settings
+from signaldesk.main import app
+from signaldesk.middleware import limiter
 
 INIT_SQL_PATH = Path(__file__).resolve().parent.parent / "init.sql"
 T = TypeVar("T")
@@ -303,7 +303,7 @@ def seeded_test_users(
     database_url: str,
 ) -> None:
     del reset_test_database
-    import app.seed as seed_module
+    import signaldesk.seed as seed_module
 
     seed_module.seed_default_test_users(database_url)
 

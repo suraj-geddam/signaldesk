@@ -3,9 +3,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 
-from app.auth import get_current_user, require_admin
-from app.db import DatabaseConnection, get_connection
-from app.queries import (
+from signaldesk.auth import get_current_user, require_admin
+from signaldesk.db import DatabaseConnection, get_connection
+from signaldesk.queries import (
     create_feedback,
     delete_feedback,
     get_feedback_by_id,
@@ -13,7 +13,7 @@ from app.queries import (
     update_feedback_as_admin,
     update_feedback_as_member,
 )
-from app.schemas import (
+from signaldesk.schemas import (
     FeedbackCreate,
     FeedbackListResponse,
     FeedbackResponse,

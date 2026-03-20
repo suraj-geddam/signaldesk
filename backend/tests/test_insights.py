@@ -6,8 +6,8 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-import app.insights as insights_module
-from app.config import Settings
+import signaldesk.insights as insights_module
+from signaldesk.config import Settings
 
 from .conftest import DatabaseHelper
 

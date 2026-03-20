@@ -6,11 +6,11 @@ from typing import Protocol, cast
 
 from asyncpg import Pool
 
-from app.config import get_settings
-from app.db import close_pool, init_pool
-from app.logging import configure_logging
+from signaldesk.config import get_settings
+from signaldesk.db import close_pool, init_pool
+from signaldesk.logging import configure_logging
 
-INIT_SQL_PATH = Path(__file__).resolve().parent.parent / "init.sql"
+INIT_SQL_PATH = Path(__file__).resolve().parent.parent.parent / "init.sql"
 BOOTSTRAP_LOCK_ID = 2_404_202_603_19
 
 

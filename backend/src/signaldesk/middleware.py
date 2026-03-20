@@ -13,8 +13,8 @@ from slowapi.util import get_remote_address
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 
-from app.config import get_settings
-from app.logging import get_logger
+from signaldesk.config import get_settings
+from signaldesk.logging import get_logger
 
 request_id_var: ContextVar[str] = ContextVar("request_id", default="no-request")
 logger = get_logger("signaldesk.http")

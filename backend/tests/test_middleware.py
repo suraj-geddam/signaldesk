@@ -2,7 +2,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-import app.config as config_module
+import signaldesk.config as config_module
 
 
 def auth_headers(client: TestClient, username: str, password: str) -> dict[str, str]:

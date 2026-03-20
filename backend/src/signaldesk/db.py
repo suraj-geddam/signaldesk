@@ -4,7 +4,7 @@ from typing import Protocol, cast
 import asyncpg
 from asyncpg import Pool, Record
 
-from app.config import Settings
+from signaldesk.config import Settings
 
 pool: Pool | None = None
 

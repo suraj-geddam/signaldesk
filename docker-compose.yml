@@ -14,11 +14,13 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   backend:
-    build: .
-    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["uv", "run", "uvicorn", "signaldesk.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     depends_on:
       db:
         condition: service_healthy
@@ -28,7 +30,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./app:/app/app
+      - ./backend/src/signaldesk:/app/src/signaldesk
+      - ./backend/init.sql:/app/init.sql
 
   frontend:
     build:
