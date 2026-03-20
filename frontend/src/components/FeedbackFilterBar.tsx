@@ -41,8 +41,10 @@ export function FeedbackFilterBar() {
   );
   const debouncedSearch = useDebounce(searchInput);
 
-  // Sync debounced search to URL
+  // Sync debounced search to URL (skip if value already matches)
   useEffect(() => {
+    const current = searchParams.get("search") || "";
+    if (debouncedSearch === current) return;
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (debouncedSearch) {
@@ -53,7 +55,7 @@ export function FeedbackFilterBar() {
       next.set("page", "1");
       return next;
     });
-  }, [debouncedSearch, setSearchParams]);
+  }, [debouncedSearch, searchParams, setSearchParams]);
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
