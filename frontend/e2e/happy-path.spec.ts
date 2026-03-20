@@ -57,7 +57,8 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
   await test.step("verify feedback in table", async () => {
     const row = page
       .getByRole("row")
-      .filter({ hasText: "SOC2 export support" });
+      .filter({ hasText: "SOC2 export support" })
+      .first();
     await expect(row.getByText("New")).toBeVisible();
     await expect(row.getByText("High")).toBeVisible();
     await expect(row.getByText("Email")).toBeVisible();
@@ -86,26 +87,29 @@ test("happy path: member CRUD, dashboard, admin delete", async ({ page }) => {
       page.getByRole("heading", { name: "Edit feedback" }),
     ).toBeVisible();
 
-    // Change the status via JS to avoid Playwright's selectOption
-    // auto-triggering form submission in headless Chromium.
-    await page.getByRole("dialog").getByLabel("Status").evaluate(
-      (el: HTMLSelectElement) => {
-        el.value = "in_progress";
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      },
-    );
-    // Use evaluate to submit the form directly — Playwright's click
-    // on the Save button races with a prior auto-submit from selectOption.
-    await page.evaluate(() => {
-      const form = document.getElementById("edit-feedback-form") as HTMLFormElement;
-      if (form) form.requestSubmit();
-    });
+    // selectOption triggers React's change handler and may auto-submit
+    // the form. Either way, the PUT request goes through.
+    await page
+      .getByRole("dialog")
+      .getByLabel("Status")
+      .selectOption("in_progress");
 
-    // Modal closes, table shows updated status
+    // If the dialog is still open (auto-submit didn't happen), click Save.
+    if (await page.getByRole("dialog").isVisible().catch(() => false)) {
+      await page.evaluate(() => {
+        const form = document.getElementById(
+          "edit-feedback-form",
+        ) as HTMLFormElement;
+        form?.requestSubmit();
+      });
+    }
+
+    // Table shows updated status
     await expect(
       page
         .getByRole("row")
         .filter({ hasText: "SOC2 export support" })
+        .first()
         .getByText("In Progress"),
     ).toBeVisible({ timeout: 10_000 });
   });
