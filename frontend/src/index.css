@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@theme {
+  /* Typography */
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, monospace;
+
+  /* Palette — warm, intentional */
+  --color-stone-50: #fafaf9;
+  --color-stone-100: #f5f5f4;
+  --color-stone-200: #e7e5e4;
+  --color-stone-300: #d6d3d1;
+  --color-stone-400: #a8a29e;
+  --color-stone-500: #78716c;
+  --color-stone-600: #57534e;
+  --color-stone-700: #44403c;
+  --color-stone-800: #292524;
+  --color-stone-900: #1c1917;
+
+  --color-signal-50: #eff6ff;
+  --color-signal-100: #dbeafe;
+  --color-signal-200: #bfdbfe;
+  --color-signal-500: #3b82f6;
+  --color-signal-600: #2563eb;
+  --color-signal-700: #1d4ed8;
+  --color-signal-800: #1e40af;
+
+  /* Status colors */
+  --color-status-new: #3b82f6;
+  --color-status-new-bg: #eff6ff;
+  --color-status-new-text: #1e40af;
+
+  --color-status-progress: #f59e0b;
+  --color-status-progress-bg: #fffbeb;
+  --color-status-progress-text: #92400e;
+
+  --color-status-done: #10b981;
+  --color-status-done-bg: #ecfdf5;
+  --color-status-done-text: #065f46;
+
+  /* Priority colors */
+  --color-priority-high: #ef4444;
+  --color-priority-high-bg: #fef2f2;
+  --color-priority-high-text: #991b1b;
+
+  --color-priority-medium: #f59e0b;
+  --color-priority-medium-bg: #fffbeb;
+  --color-priority-medium-text: #92400e;
+
+  --color-priority-low: #10b981;
+  --color-priority-low-bg: #ecfdf5;
+  --color-priority-low-text: #065f46;
+
+  /* Confidence colors */
+  --color-confidence-high-bg: #ecfdf5;
+  --color-confidence-high-text: #065f46;
+  --color-confidence-mid-bg: #fffbeb;
+  --color-confidence-mid-text: #92400e;
+  --color-confidence-low-bg: #f5f5f4;
+  --color-confidence-low-text: #57534e;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-stone-50);
+  color: var(--color-stone-900);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth page transitions */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Modal animations */
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-backdrop-in {
+  animation: backdrop-in 0.15s ease-out;
+}
+
+.animate-modal-in {
+  animation: modal-in 0.2s ease-out;
+}
