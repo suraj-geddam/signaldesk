@@ -109,7 +109,6 @@ async def validation_exception_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
-    del request
     if not isinstance(exc, RequestValidationError):
         raise TypeError("Validation handler received a non-validation exception.")
 
@@ -127,7 +126,6 @@ def rate_limit_exception_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
-    del request
     if not isinstance(exc, RateLimitExceeded):
         raise TypeError("Rate-limit handler received a non-rate-limit exception.")
 

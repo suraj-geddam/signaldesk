@@ -95,7 +95,6 @@ async def login(
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LoginResponse:
-    del request
     user = await authenticate_user(connection, credentials.username, credentials.password)
     if user is None:
         raise HTTPException(

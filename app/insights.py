@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from openai import AsyncOpenAI
@@ -110,7 +110,7 @@ async def run_generate_insights(settings: Settings) -> object | None:
         return None
 
     async with db_module.pool.acquire() as connection:
-        return await generate_insights(connection, settings)
+        return await generate_insights(cast(DatabaseConnection, connection), settings)
 
 
 async def periodic_ai_refresh(settings: Settings) -> None:
@@ -118,7 +118,7 @@ async def periodic_ai_refresh(settings: Settings) -> None:
         try:
             if db_module.pool is not None:
                 async with db_module.pool.acquire() as connection:
-                    latest = await get_latest_summary(connection)
+                    latest = await get_latest_summary(cast(DatabaseConnection, connection))
                 if latest is None or is_stale(latest.generated_at, settings):
                     await run_generate_insights(settings)
         except asyncio.CancelledError:
@@ -146,7 +146,6 @@ async def get_insights_endpoint(
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> InsightsResponse:
-    del user
     latest = await get_latest_summary(connection)
     if latest is None:
         return InsightsResponse(
@@ -175,7 +174,5 @@ async def refresh_insights_endpoint(
     user: Annotated[UserRow, Depends(require_admin)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, str]:
-    del request
-    del user
     background_tasks.add_task(run_generate_insights, settings)
     return {"message": "Refresh started"}

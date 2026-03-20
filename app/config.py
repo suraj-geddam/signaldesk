@@ -36,4 +36,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    # pydantic-settings populates required fields from env at runtime.
     return Settings()  # pyright: ignore[reportCallIssue]

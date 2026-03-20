@@ -65,7 +65,6 @@ async def list_feedback_endpoint(
     sort_by: SortBy = SortBy.created_at,
     sort_order: SortOrder = SortOrder.desc,
 ) -> FeedbackListResponse:
-    del user
     items, total = await list_feedback(
         connection,
         status=status_filter,
@@ -91,7 +90,6 @@ async def get_feedback_endpoint(
     user: Annotated[UserRow, Depends(get_current_user)],
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
 ) -> FeedbackResponse:
-    del user
     feedback = await get_feedback_by_id(connection, feedback_id)
     if feedback is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")
@@ -140,7 +138,6 @@ async def delete_feedback_endpoint(
     user: Annotated[UserRow, Depends(require_admin)],
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
 ) -> Response:
-    del user
     deleted = await delete_feedback(connection, feedback_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")

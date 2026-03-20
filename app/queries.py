@@ -265,7 +265,7 @@ async def list_feedback(
     else:
         order_expr = f"created_at {sort_order.value.upper()}"
 
-    total = int(
+    total = _count_from_value(
         await connection.fetchval(
             f"SELECT COUNT(*) FROM feedback {where}",
             *params,

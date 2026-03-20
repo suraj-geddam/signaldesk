@@ -1,13 +1,32 @@
-from collections.abc import AsyncGenerator
-from typing import Any
+from collections.abc import AsyncGenerator, Mapping, Sequence
+from typing import Protocol, cast
 
 import asyncpg
-from asyncpg import Pool
+from asyncpg import Pool, Record
 
 from app.config import Settings
 
 pool: Pool | None = None
-DatabaseConnection = Any
+
+
+class DatabaseConnection(Protocol):
+    async def fetchrow(
+        self,
+        query: str,
+        *args: object,
+    ) -> Record | Mapping[str, object] | None: ...
+
+    async def fetch(
+        self,
+        query: str,
+        *args: object,
+    ) -> Sequence[Record | Mapping[str, object]]: ...
+
+    async def fetchval(
+        self,
+        query: str,
+        *args: object,
+    ) -> object: ...
 
 
 async def init_pool(settings: Settings) -> Pool:
@@ -36,4 +55,4 @@ async def get_connection() -> AsyncGenerator[DatabaseConnection, None]:
         raise RuntimeError("Database pool is not initialized.")
 
     async with pool.acquire() as connection:
-        yield connection
+        yield cast(DatabaseConnection, connection)

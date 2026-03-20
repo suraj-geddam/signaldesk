@@ -15,5 +15,4 @@ async def read_dashboard(
     user: Annotated[UserRow, Depends(get_current_user)],
     connection: Annotated[DatabaseConnection, Depends(get_connection)],
 ) -> DashboardResponse:
-    del user
     return await get_dashboard(connection)
