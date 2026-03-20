@@ -5,13 +5,11 @@ from asyncio import run
 from dataclasses import dataclass
 from os import getenv
 
+import bcrypt
 import asyncpg
 from asyncpg import Connection
-from passlib.context import CryptContext
 
 from signaldesk.bootstrap import initialize_database
-
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @dataclass(frozen=True)
@@ -63,7 +61,8 @@ def _users_from_args(args: Namespace) -> list[SeedUser]:
 
 async def seed_users(connection: Connection, users: list[SeedUser]) -> None:
     payload = [
-        (user.username, password_context.hash(user.password), user.role) for user in users
+        (user.username, bcrypt.hashpw(user.password.encode(), bcrypt.gensalt()).decode(), user.role)
+        for user in users
     ]
     await connection.executemany(
         """

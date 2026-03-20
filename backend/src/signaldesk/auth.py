@@ -1,10 +1,10 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import ValidationError
 
 from signaldesk.config import Settings, get_settings
@@ -15,8 +15,6 @@ from signaldesk.schemas import LoginRequest, LoginResponse, Role, TokenPayload, 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 JWT_ALGORITHM = "HS256"
 AUTH_ERROR_HEADERS = {"WWW-Authenticate": "Bearer"}
 
@@ -49,7 +47,7 @@ async def authenticate_user(
     password: str,
 ) -> UserRow | None:
     user = await get_user_by_username(connection, username)
-    if user is None or not password_context.verify(password, user.password_hash):
+    if user is None or not bcrypt.checkpw(password.encode(), user.password_hash.encode()):
         return None
 
     return UserRow(
