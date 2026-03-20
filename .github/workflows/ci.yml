@@ -53,3 +53,25 @@ jobs:
         env:
           DATABASE_URL: postgresql://signaldesk:signaldesk@localhost:5432/signaldesk_test
           JWT_SECRET: test-secret
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend
+        run: npx tsc -b
+
+      - name: Test
+        working-directory: frontend
+        run: npm test
