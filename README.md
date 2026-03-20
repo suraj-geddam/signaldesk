@@ -2,7 +2,7 @@
 
 SignalDesk is an customer-feedback triage tool with a FastAPI backend, a React frontend, cached AI insights, and a Railway deployment target.
 
-Currently live at https://signaldesk.up.railway.app/.
+Currently live at https://signaldesk.up.railway.app/ (seeded with demo users and sample data)
 
 ## Features
 
