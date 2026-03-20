@@ -32,8 +32,13 @@ from app.middleware import limiter
 INIT_SQL_PATH = Path(__file__).resolve().parent.parent / "init.sql"
 T = TypeVar("T")
 
+
 def run_async[T](awaitable: Coroutine[object, object, T]) -> T:
     return asyncio.run(awaitable)
+
+
+def clear_database_schema(database_url: str) -> None:
+    run_async(_clear_schema(database_url))
 
 
 def _split_database_url(database_url: str) -> SplitResult:
@@ -87,6 +92,15 @@ async def _reset_schema(database_url: str) -> None:
         await connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
         await connection.execute("CREATE SCHEMA public")
         await connection.execute(INIT_SQL_PATH.read_text())
+    finally:
+        await connection.close()
+
+
+async def _clear_schema(database_url: str) -> None:
+    connection = await asyncpg.connect(database_url)
+    try:
+        await connection.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        await connection.execute("CREATE SCHEMA public")
     finally:
         await connection.close()
 

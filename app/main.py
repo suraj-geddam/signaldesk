@@ -9,6 +9,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.auth import router as auth_router
+from app.bootstrap import initialize_database_pool
 from app.config import get_settings
 from app.dashboard import router as dashboard_router
 from app.db import close_pool, init_pool
@@ -30,7 +31,8 @@ from app.middleware import (
 async def lifespan(_: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
-    await init_pool(settings)
+    pool = await init_pool(settings)
+    await initialize_database_pool(pool)
     periodic_task: Task[None] | None = start_periodic_ai_refresh(settings)
 
     try:
